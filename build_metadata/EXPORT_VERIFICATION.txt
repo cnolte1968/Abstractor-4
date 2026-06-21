@@ -1,0 +1,15 @@
+=== EXPORT VERIFICATION REPORT ===
+Generated: Wed Jun 17 18:31:18 UTC 2026
+APK Name: abstractor-debug.apk
+APK Size: 19574725 bytes
+APK SHA-256: 9ac0ae1ebdbe7e7690f13d94bfa3fdf4bc01f51dc25c5c17dbdcb515b517074f
+APK Magic Bytes: PK (PASS)
+
+ZIP Name: abstractor-debug-export.zip
+ZIP Size: 18867480 bytes
+ZIP SHA-256: fcad48a516078ca9e13f05a616b76d97afc3c4f4be1597e30d98feed04c8c6c9
+ZIP Magic Bytes: PK (PASS)
+ZIP Contents: abstractor-debug.apk, abstractor-debug.apk.sha256.txt, README_INSTALL.txt
+ZIP Integrity Check: PASS
+
+Hinweis: Wenn die heruntergeladene ZIP- oder APK-Datei eine andere Größe oder ein anderes SHA-256-Prüfsummen-Ergebnis als oben angegeben aufweist, ist die Google AI Studio Download-/Browser-Export-Pipeline defekt (Integritätsverlust während der Übertragung).

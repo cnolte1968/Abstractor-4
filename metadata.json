@@ -1,0 +1,6 @@
+{
+  "name": "Abstractor",
+  "description": "Dein persönlicher KI-Zusammenfasser für Webseiten und YouTube-Untertitel.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

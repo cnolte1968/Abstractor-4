@@ -1,0 +1,42 @@
+[
+  {
+    "analysis_type": "STANDARD_WEBSEITE",
+    "file": "F_STANDARD_WEBSEITE.md"
+  },
+  {
+    "analysis_type": "MULTIMEDIA",
+    "file": "F_MULTIMEDIA.md"
+  },
+  {
+    "analysis_type": "DOKUMENTE",
+    "file": "F_DOKUMENTE.md"
+  },
+  {
+    "analysis_type": "TOP_3_KERNAUSSAGEN",
+    "file": "F_TOP_3_KERNAUSSAGEN.md"
+  },
+  {
+    "analysis_type": "AKTUALITAETS_CHECK",
+    "file": "F_AKTUALITAETS_CHECK.md"
+  },
+  {
+    "analysis_type": "FEHLINFORMATIONS_RADAR",
+    "file": "F_FEHLINFORMATIONS_RADAR.md"
+  },
+  {
+    "analysis_type": "RISIKO_ANALYSE",
+    "file": "F_RISIKO_ANALYSE.md"
+  },
+  {
+    "analysis_type": "BUSINESS_INKUBATOR",
+    "file": "F_BUSINESS_INKUBATOR.md"
+  },
+  {
+    "analysis_type": "FACTS_VS_OPINIONS_ANALYZER",
+    "file": "F_FACTS_VS_OPINIONS_ANALYZER.md"
+  },
+  {
+    "analysis_type": "PERSPECTIVES_AND_COUNTERPOSITIONS",
+    "file": "F_PERSPECTIVES_AND_COUNTERPOSITIONS.md"
+  }
+]
