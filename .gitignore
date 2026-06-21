@@ -9,9 +9,10 @@
 /.idea/navEditor.xml
 /.idea/assetWizardSettings.xml
 .DS_Store
-# /build unignored to ensure visibility of APK outputs in explorer
-!/app/build/
-!/app/build/**
+# Ignore Gradle build outputs
+build/
+/app/build/
+*.apk
 /captures
 .externalNativeBuild
 .cxx
