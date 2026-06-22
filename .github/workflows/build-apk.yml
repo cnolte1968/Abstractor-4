@@ -55,18 +55,8 @@ jobs:
           
           if [ -n "$KEYSTORE_BASE64_PATH" ]; then
             echo "Found debug.keystore.base64 at $KEYSTORE_BASE64_PATH"
-            python3 -c "
-import base64
-try:
-    with open('$KEYSTORE_BASE64_PATH', 'r') as f_in:
-        data = f_in.read().strip().replace('\r','').replace('\n','').replace(' ','')
-    decoded = base64.b64decode(data)
-    with open('$TARGET_KEYSTORE', 'wb') as f_out:
-        f_out.write(decoded)
-    print('Successfully decoded debug.keystore to $TARGET_KEYSTORE')
-except Exception as e:
-    print('Failed to decode debug.keystore.base64:', e)
-"
+            tr -d '\r\n ' < "$KEYSTORE_BASE64_PATH" | base64 -d > "$TARGET_KEYSTORE"
+            echo "Successfully decoded debug.keystore to $TARGET_KEYSTORE"
           fi
           
           if [ ! -f "$TARGET_KEYSTORE" ]; then
