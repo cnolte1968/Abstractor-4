@@ -12,5 +12,4 @@ This file contains persistent constraints and instructions that the AI Studio Ag
 
 ## 2. Signing Stability
 - Do NOT regenerate, overwrite, or modify `/debug.keystore.base64` or the signing configuration within `/app/build.gradle.kts` unless directly asked. 
-- Maintain certificate fingerprint consistency.
-- 
+- Maintain certificate fingerprint consistency. 
