@@ -46,16 +46,43 @@ jobs:
             fi
           fi
 
-      - name: Decode Debug Keystore
+      - name: Decode or Generate Debug Keystore
         run: |
           KEYSTORE_BASE64_PATH=$(find . -name "debug.keystore.base64" -print -quit)
+          SETTINGS_PATH=$(find . -name "settings.gradle.kts" -print -quit)
+          BUILD_DIR=$(dirname "$SETTINGS_PATH")
+          TARGET_KEYSTORE="$BUILD_DIR/debug.keystore"
+          
           if [ -n "$KEYSTORE_BASE64_PATH" ]; then
-            DIR=$(dirname "$KEYSTORE_BASE64_PATH")
             echo "Found debug.keystore.base64 at $KEYSTORE_BASE64_PATH"
-            tr -d '\r\n ' < "$KEYSTORE_BASE64_PATH" | base64 -d > "$DIR/debug.keystore"
-            echo "Decoded debug.keystore to $DIR/debug.keystore"
+            python3 -c "
+import base64
+try:
+    with open('$KEYSTORE_BASE64_PATH', 'r') as f_in:
+        data = f_in.read().strip().replace('\r','').replace('\n','').replace(' ','')
+    decoded = base64.b64decode(data)
+    with open('$TARGET_KEYSTORE', 'wb') as f_out:
+        f_out.write(decoded)
+    print('Successfully decoded debug.keystore to $TARGET_KEYSTORE')
+except Exception as e:
+    print('Failed to decode debug.keystore.base64:', e)
+"
+          fi
+          
+          if [ ! -f "$TARGET_KEYSTORE" ]; then
+            echo "debug.keystore not found or failed to decode. Generating a new debug keystore..."
+            keytool -genkey -v \
+              -keystore "$TARGET_KEYSTORE" \
+              -storepass android \
+              -alias androiddebugkey \
+              -keypass android \
+              -keyalg RSA \
+              -keysize 2048 \
+              -validity 10950 \
+              -dname "CN=Android Debug,O=Android,C=US"
+            echo "Generated new debug keystore at $TARGET_KEYSTORE"
           else
-            echo "debug.keystore.base64 not found, using automatic debug signing"
+            echo "Using decoded debug.keystore at $TARGET_KEYSTORE"
           fi
 
       - name: Setup Gradle
