@@ -116,12 +116,12 @@ abstract class BaseGeminiEngine(
         val relevantorSummarySchema = ResponseSchema(
             type = "OBJECT",
             properties = mapOf(
-                "title" to SchemaProperty(type = "STRING", description = "Der prägnante Titel der Quelle"),
+                "title" to SchemaProperty(type = "STRING", description = "Reine Identifikation des Analyseobjekts. Keine Beschreibung, keine Bewertung."),
                 "original_url" to SchemaProperty(type = "STRING", description = "Die übergebene Original-URL der Quelle"),
-                "short_description" to SchemaProperty(type = "STRING", description = "Eine kurze, ungeschönte Zusammenfassung des Inhalts"),
+                "short_description" to SchemaProperty(type = "STRING", description = "Grundverständnis. Erklärt was das Objekt ist, Zweck und Kontext. Keine Vorwegnahme von Kernaussagen."),
                 "key_takeaways" to SchemaProperty(
                     type = "ARRAY",
-                    description = "Die wichtigsten Kernaussagen als strukturierte JSON-Objekte mit 'title' und 'details'",
+                    description = "Zusätzliche Erkenntnisse (additional insights only). Jeder Punkt muss neue Informationen liefern. Keine Wiederholung von title oder short_description.",
                     items = SchemaProperty(
                         type = "OBJECT",
                         properties = mapOf(
