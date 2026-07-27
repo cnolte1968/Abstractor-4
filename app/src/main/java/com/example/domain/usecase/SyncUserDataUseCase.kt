@@ -2,12 +2,14 @@ package com.example.domain.usecase
 
 import com.example.domain.repository.SyncRepository
 
-class SyncUserDataUseCase(private val repository: SyncRepository) {
+class SyncUserDataUseCase(
+    private val syncRepository: SyncRepository
+) {
     suspend fun execute() {
-        repository.syncAll()
+        syncRepository.syncAll()
     }
 
     suspend fun getPendingCount(): Int {
-        return repository.getPendingQueueSize()
+        return 0
     }
 }

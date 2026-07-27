@@ -12,11 +12,11 @@
 
 ## EVIDENCE
 
-### 1. Unified Output Structure (`AbstractorSummary` in `GeminiModels.kt`)
+### 1. Unified Output Structure (`RelevantorSummary` in `GeminiModels.kt`)
 The entire application operates on a single central data class which enforces a unified schema:
 ```kotlin
 // In app/src/main/java/com/example/data/GeminiModels.kt, Line 96-102:
-data class AbstractorSummary(
+data class RelevantorSummary(
     @param:Json(name = "title") val title: String,
     @param:Json(name = "original_url") val originalUrl: String,
     @param:Json(name = "short_description") val shortDescription: String,
@@ -93,7 +93,7 @@ Copying to clipboard or sharing text is handled centrally by `buildPlainTextShar
 ```kotlin
 // In MainActivity.kt, Line 1826-1877:
 fun buildPlainTextShareOrCopyText(
-    summary: AbstractorSummary,
+    summary: RelevantorSummary,
     analysisType: com.example.data.AnalysisType,
     fallbackUrl: String
 ): String {
@@ -104,7 +104,7 @@ fun buildPlainTextShareOrCopyText(
 ---
 
 ### 5. Engine Centralization Structure (`SummaryResponseParser.kt`)
-The parser enforces structural conformance on any raw LLM responses, ensuring they are cleanly loaded into `AbstractorSummary`. 
+The parser enforces structural conformance on any raw LLM responses, ensuring they are cleanly loaded into `RelevantorSummary`. 
 However, string cleanup logic is distributed:
 * Prompt level: Instructs LLM on format templates (`**Key**: Value`).
 * Parse level: Cleans string tails, strips bullets, coordinates fallback.

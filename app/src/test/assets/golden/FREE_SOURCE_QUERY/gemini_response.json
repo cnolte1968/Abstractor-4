@@ -1,0 +1,16 @@
+{
+  "title": "KI im Journalismus",
+  "original_url": "https://freie-anfrage.de",
+  "short_description": "Eine Zusammenfassung der Auswirkungen von künstlicher Intelligenz auf journalistische Arbeitsprozesse und Redaktionen.",
+  "key_takeaways": [
+    {
+      "title": "Automatisierung von Routineaufgaben",
+      "details": "KI-Tools übernehmen vermehrt das Verfassen von Standardmeldungen wie Sportberichten oder Börsennews."
+    },
+    {
+      "title": "Unterstützung bei der Recherche",
+      "details": "Algorithmen helfen Journalisten dabei, große Datenmengen schnell zu analysieren und Muster zu erkennen."
+    }
+  ],
+  "owner": "FreieAnfrage"
+}

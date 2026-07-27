@@ -1,4 +1,4 @@
-# Project-Specific Agent Instructions for ABSTRACTOR
+# Project-Specific Agent Instructions for RELEVANTOR
 
 This file contains persistent constraints and instructions that the AI Studio Agent must adhere to during all code editing, building, and deployment operations.
 

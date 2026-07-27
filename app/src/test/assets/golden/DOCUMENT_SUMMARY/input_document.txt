@@ -1,0 +1,3 @@
+Projekt-Charta: AI-Entwicklung 2026
+Ziel des Projekts ist die Etablierung eines unternehmensweiten KI-Assistenten.
+Das Budget beträgt 500.000 EUR und die Laufzeit ist auf 12 Monate festgesetzt.

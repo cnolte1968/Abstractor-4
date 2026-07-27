@@ -6,6 +6,8 @@ import androidx.lifecycle.viewModelScope
 import android.util.Log
 import com.example.domain.model.DomainSummary
 import com.example.domain.model.TakeawayItem
+import com.example.domain.model.CanonicalAnalysisInput
+import com.example.domain.model.SourceType
 import com.example.data.YoutubeTranscriptHelper
 import com.example.data.WebpageExtractor
 import kotlinx.coroutines.Dispatchers
@@ -29,10 +31,11 @@ enum class LoadingStep {
 }
 
 sealed interface UiState {
+    val analysisId: String get() = ""
     object Idle : UiState
-    data class Loading(val step: LoadingStep = LoadingStep.FETCHING_DATA) : UiState
-    data class Success(val summary: DomainSummary, val analysisType: com.example.data.AnalysisType = com.example.data.AnalysisType.STANDARD_WEBSEITE) : UiState
-    data class Error(val isPaywallOrBlocked: Boolean, val message: String, val detail: String? = null) : UiState
+    data class Loading(val step: LoadingStep = LoadingStep.FETCHING_DATA, override val analysisId: String = "") : UiState
+    data class Success(val summary: DomainSummary, val analysisType: com.example.data.AnalysisType = com.example.data.AnalysisType.WEB_SUMMARY, override val analysisId: String = "") : UiState
+    data class Error(val isPaywallOrBlocked: Boolean, val message: String, val detail: String? = null, override val analysisId: String = "") : UiState
 }
 
 sealed interface AuthStatus {
@@ -49,6 +52,7 @@ class MainViewModel : ViewModel() {
     private lateinit var saveAnalysisUseCase: SaveAnalysisUseCase
     private lateinit var loadHistoryUseCase: LoadHistoryUseCase
     private lateinit var syncUserDataUseCase: SyncUserDataUseCase
+    private lateinit var extractContentUseCase: com.example.domain.usecase.ExtractContentUseCase
     lateinit var userRepository: UserRepository
 
     private val _savedHistories = MutableStateFlow<List<DomainSummary>>(emptyList())
@@ -69,27 +73,85 @@ class MainViewModel : ViewModel() {
     private val _authStatus = MutableStateFlow<AuthStatus>(AuthStatus.Guest)
     val authStatus: StateFlow<AuthStatus> = _authStatus
 
+    private val defaultFavoritesList = listOf(
+        "WEB_SUMMARY",
+        "KEY_TAKEAWAYS",
+        "FACTS_VS_OPINIONS",
+        "FRESHNESS_CHECK",
+        "RISK_ANALYSIS",
+        "GOOGLE_MAPS_ANALYZER"
+    )
+
+    private val _favoritesList = MutableStateFlow<List<String>>(defaultFavoritesList)
+    val favoritesList: StateFlow<List<String>> = _favoritesList
+
+    fun toggleFavorite(functionId: String) {
+        val current = _favoritesList.value
+        val updated = if (current.contains(functionId)) {
+            current - functionId
+        } else {
+            current + functionId
+        }
+        _favoritesList.value = updated
+        appContext?.let { ctx ->
+            com.example.data.local.SessionStorage.saveFavorites(ctx, updated)
+        }
+    }
+
+    fun moveFavoriteUp(functionId: String) {
+        val current = _favoritesList.value.toMutableList()
+        val index = current.indexOf(functionId)
+        if (index > 0) {
+            val temp = current[index]
+            current[index] = current[index - 1]
+            current[index - 1] = temp
+            _favoritesList.value = current
+            appContext?.let { ctx ->
+                com.example.data.local.SessionStorage.saveFavorites(ctx, current)
+            }
+        }
+    }
+
+    fun moveFavoriteDown(functionId: String) {
+        val current = _favoritesList.value.toMutableList()
+        val index = current.indexOf(functionId)
+        if (index in 0 until current.size - 1) {
+            val temp = current[index]
+            current[index] = current[index + 1]
+            current[index + 1] = temp
+            _favoritesList.value = current
+            appContext?.let { ctx ->
+                com.example.data.local.SessionStorage.saveFavorites(ctx, current)
+            }
+        }
+    }
+
     fun initIfNeeded(context: android.content.Context) {
         if (isInitialized) return
-        appContext = context.applicationContext
-        val db = com.example.data.local.AbstractorDatabase.getInstance(context.applicationContext)
+        val appContext = context.applicationContext
+        this.appContext = appContext
+        com.example.data.GeminiRepository.staticContext = appContext
+        val db = com.example.data.local.RelevantorDatabase.getInstance(appContext)
         val api = com.example.data.remote.BackendApiService.create()
         
-        val analysisRepo = com.example.data.repository.AnalysisRepositoryImpl(db, api)
-        val syncRepo = com.example.data.repository.SyncRepositoryImpl(db, api)
-        userRepository = com.example.data.repository.UserRepositoryImpl(db, api)
+        val analysisRepo = com.example.data.repository.AnalysisRepositoryImpl(db, api, appContext)
+        val syncRepo = com.example.data.repository.SyncRepositoryImpl(db, api, appContext)
+        userRepository = com.example.data.repository.UserRepositoryImpl(appContext, api)
         
-        analyzeContentUseCase = AnalyzeContentUseCase(analysisRepo)
+        analyzeContentUseCase = AnalyzeContentUseCase(analysisRepo, com.example.data.GeminiRepository, appContext)
         saveAnalysisUseCase = SaveAnalysisUseCase(analysisRepo)
         loadHistoryUseCase = LoadHistoryUseCase(analysisRepo)
         syncUserDataUseCase = SyncUserDataUseCase(syncRepo)
+        val extractionRepo = com.example.data.repository.ContentExtractionRepositoryImpl(appContext)
+        extractContentUseCase = com.example.domain.usecase.ExtractContentUseCase(extractionRepo)
         
         isInitialized = true
+        _favoritesList.value = com.example.data.local.SessionStorage.getFavorites(appContext)
         observeHistory()
         updatePendingSyncCount()
         updateActiveUser()
 
-        // Auto-save successful analyses
+        // Auto-save successful analyses & update Pipeline Report
         viewModelScope.launch {
             _uiState.collect { state ->
                 if (state is UiState.Success) {
@@ -98,6 +160,87 @@ class MainViewModel : ViewModel() {
                         updatePendingSyncCount()
                     } catch (e: Exception) {
                         Log.e("MainViewModel", "Failed to auto-save analysis", e)
+                    }
+                }
+                
+                // Tracing for Pipeline Report
+                val report = com.example.data.PipelineReportStore.getReport()
+                if (report != null) {
+                    when (state) {
+                        is UiState.Success -> {
+                            com.example.data.PipelineReportStore.startStep("rendering", "Rendering")
+                            com.example.data.PipelineReportStore.updateSection("rendering") { map ->
+                                map["resultRendered"] = true
+                                map["targetScreen"] = "RESULT"
+                                map["renderedTitle"] = state.summary.title
+                                map["renderedSectionCount"] = 2
+                                map["renderedTakeawayCount"] = state.summary.keyTakeaways.size
+                            }
+                            com.example.data.PipelineReportStore.endStepPass(
+                                "rendering",
+                                "Rendered summary with ${state.summary.keyTakeaways.size} takeaways",
+                                decision = "Render analysis result screen successfully"
+                            )
+                            
+                            com.example.data.PipelineReportStore.startStep("final_result", "Final Result")
+                            com.example.data.PipelineReportStore.updateSection("final_result") { map ->
+                                if (state.summary.fallbackUsed || state.summary.shortDescription == "TRANSCRIPT_UNAVAILABLE") {
+                                    map["finalStatus"] = "DEGRADED"
+                                    map["technicalErrorCategory"] = "TRANSCRIPT_UNAVAILABLE"
+                                    map["pipelineCompleted"] = true
+                                } else {
+                                    map["finalStatus"] = "PASS"
+                                    map["pipelineCompleted"] = true
+                                }
+                            }
+                            val endMsg = if (state.summary.fallbackUsed || state.summary.shortDescription == "TRANSCRIPT_UNAVAILABLE") {
+                                "Pipeline run completed with degraded status: TRANSCRIPT_UNAVAILABLE"
+                            } else {
+                                "Pipeline run completed successfully"
+                            }
+                            com.example.data.PipelineReportStore.endStepPass(
+                                "final_result",
+                                endMsg,
+                                decision = "Idle"
+                            )
+                            
+                            com.example.data.PipelineReportStore.updateSection("user_actions") { map ->
+                                map["copyAvailable"] = true
+                                map["shareAvailable"] = true
+                                map["pdfAvailable"] = true
+                                map["debugAvailable"] = true
+                                map["pipelineReportAvailable"] = true
+                            }
+                            
+                            appContext?.let { com.example.data.PipelineReportStore.populateFromDiagnostics(it) }
+                        }
+                        is UiState.Error -> {
+                            com.example.data.PipelineReportStore.startStep("final_result", "Final Result")
+                            com.example.data.PipelineReportStore.updateSection("final_result") { map ->
+                                map["finalStatus"] = "FAIL"
+                                map["pipelineCompleted"] = false
+                                map["userVisibleErrorTitle"] = state.message
+                                map["userVisibleErrorMessage"] = state.detail ?: ""
+                                map["failureStage"] = com.example.data.GatewayDiagnostics.failureStage.ifEmpty { "EXECUTION_ERROR" }
+                                map["failureStepId"] = "execution_failure"
+                            }
+                            com.example.data.PipelineReportStore.endStepFail(
+                                "final_result",
+                                null,
+                                notes = "Failed on: ${state.message}. Detail: ${state.detail}"
+                            )
+                            
+                            com.example.data.PipelineReportStore.updateSection("user_actions") { map ->
+                                map["copyAvailable"] = false
+                                map["shareAvailable"] = false
+                                map["pdfAvailable"] = false
+                                map["debugAvailable"] = true
+                                map["pipelineReportAvailable"] = true
+                            }
+                            
+                            appContext?.let { com.example.data.PipelineReportStore.populateFromDiagnostics(it) }
+                        }
+                        else -> {}
                     }
                 }
             }
@@ -115,7 +258,18 @@ class MainViewModel : ViewModel() {
     fun openSavedAnalysis(summary: DomainSummary) {
         _currentUrl.value = summary.originalUrl
         _currentTitle.value = summary.title
-        _uiState.value = UiState.Success(summary, com.example.data.AnalysisType.STANDARD_WEBSEITE)
+        val savedType = if (summary.analysisId.contains("|")) {
+            val parts = summary.analysisId.split("|")
+            try {
+                com.example.data.AnalysisType.valueOf(parts[1])
+            } catch (e: Exception) {
+                com.example.data.AnalysisType.WEB_SUMMARY
+            }
+        } else {
+            com.example.data.AnalysisType.WEB_SUMMARY
+        }
+        _currentAnalysisType.value = savedType
+        _uiState.value = UiState.Success(summary, savedType, summary.analysisId)
     }
 
     fun updatePendingSyncCount() {
@@ -190,7 +344,7 @@ class MainViewModel : ViewModel() {
     private val _sharedUrlToFill = MutableStateFlow("")
     val sharedUrlToFill: StateFlow<String> = _sharedUrlToFill
 
-    private val _currentAnalysisType = MutableStateFlow<com.example.data.AnalysisType>(com.example.data.AnalysisType.STANDARD_WEBSEITE)
+    private val _currentAnalysisType = MutableStateFlow<com.example.data.AnalysisType>(com.example.data.AnalysisType.WEB_SUMMARY)
     val currentAnalysisType: StateFlow<com.example.data.AnalysisType> = _currentAnalysisType
 
     var cachedDirectContent: String? = null
@@ -199,7 +353,7 @@ class MainViewModel : ViewModel() {
         _uiState.value = UiState.Idle
         _currentUrl.value = ""
         _currentTitle.value = ""
-        _currentAnalysisType.value = com.example.data.AnalysisType.STANDARD_WEBSEITE
+        _currentAnalysisType.value = com.example.data.AnalysisType.WEB_SUMMARY
         cachedDirectContent = null
     }
 
@@ -208,7 +362,7 @@ class MainViewModel : ViewModel() {
     }
 
     fun setSharedText(sharedText: String, intent: Intent? = null) {
-        val extractedUrl = extractUrl(sharedText)
+        val extractedUrl = com.example.data.YoutubeUrlDecoder.extractUrl(sharedText)
         if (extractedUrl == null) {
             val trimmedText = sharedText.trim()
             if (trimmedText.length > 20) {
@@ -221,6 +375,12 @@ class MainViewModel : ViewModel() {
                     detail = "Der geteilte Inhalt enthält weder eine Web-Adresse noch einen ausreichenden Textabschnitt."
                 )
             }
+            return
+        }
+
+        if (com.example.data.GoogleMapsUrlParser.isGoogleMapsUrl(extractedUrl)) {
+            val trimmedUrl = extractedUrl.trim()
+            _sharedUrlToFill.value = trimmedUrl
             return
         }
 
@@ -248,7 +408,7 @@ class MainViewModel : ViewModel() {
 
         // Wenn der restliche Text signifikant länger ist als nur die URL (z.B. > 50 Zeichen),
         // und es keine YouTube-Url ist, übergeben wir den gesamten Text direkt an die Gemini API!
-        if (restText.length > 50 && !isYoutubeUrl(cleanUrl)) {
+        if (restText.length > 50 && !com.example.data.YoutubeUrlDecoder.isYoutubeUrl(cleanUrl)) {
             cachedDirectContent = sharedText
         } else {
             cachedDirectContent = null
@@ -263,611 +423,616 @@ class MainViewModel : ViewModel() {
         setSharedText(sharedText, intent)
     }
 
-    fun fetchSummary(rawUrl: String, directContent: String? = null, analysisType: com.example.data.AnalysisType = com.example.data.AnalysisType.STANDARD_WEBSEITE) {
-        _currentAnalysisType.value = analysisType
-        _currentUrl.value = rawUrl
-        _currentTitle.value = "Webseite analysieren"
-        _uiState.value = UiState.Loading(LoadingStep.FETCHING_DATA)
-        viewModelScope.launch {
-            try {
-                // Pre-process & normalize URL input
-                val extracted = extractUrl(rawUrl) ?: rawUrl.trim()
-                var inputUrl = if (!extracted.startsWith("http://", ignoreCase = true) && !extracted.startsWith("https://", ignoreCase = true)) {
-                    "https://$extracted"
-                } else {
-                    extracted
-                }
+    fun fetchSummary(rawUrl: String, directContent: String? = null, analysisType: com.example.data.AnalysisType = com.example.data.AnalysisType.WEB_SUMMARY, freeQuery: String? = null) {
+        if (analysisType == com.example.data.AnalysisType.GOOGLE_MAPS_ANALYZER) {
+            val analysisId = java.util.UUID.randomUUID().toString() + "|" + analysisType.name
+            _currentAnalysisType.value = analysisType
+            _currentUrl.value = rawUrl
+            _currentTitle.value = "Google Maps Analyzer (Stufe 1)"
+            _uiState.value = UiState.Loading(LoadingStep.FETCHING_DATA, analysisId)
 
-                // Check for basic URL validity before redirect resolution
-                if (!inputUrl.contains(".") || inputUrl.length < 5) {
-                    _uiState.value = UiState.Error(
-                        isPaywallOrBlocked = false,
-                        message = "Ungültige Webadresse eingegeben.",
-                        detail = "Bitte stelle sicher, dass du eine vollständige Adresse eingegeben hast, z. B. „spiegel.de“ oder einen Link aus deinem Browser."
-                    )
-                    return@launch
-                }
-
-                // Resolve redirects (like lnkd.in, fb.me, t.co) on Dispatchers.IO to find the final canonical destination
-                _uiState.value = UiState.Loading(LoadingStep.FETCHING_DATA)
-                val url = withContext(Dispatchers.IO) {
-                    try {
-                        com.example.data.WebpageExtractor.resolveUrl(inputUrl)
-                    } catch (e: Exception) {
-                        inputUrl
-                    }
-                }
-
-                val socialMediaRegex = Regex(
-                    ".*(facebook\\.com|instagram\\.com|fb\\.watch|fb\\.com|fb\\.me|instagr\\.am).*",
-                    RegexOption.IGNORE_CASE
-                )
-                if (socialMediaRegex.matches(inputUrl) || socialMediaRegex.matches(url)) {
-                    _currentUrl.value = url
-                    _currentTitle.value = "Inhalt geschützt"
-                    _uiState.value = UiState.Success(
-                        DomainSummary(
-                            title = "Inhalt geschützt",
-                            originalUrl = url,
-                            shortDescription = "Social Media Seiten können aus Gründen der Vertraulichkeit nicht berücksichtigt werden.",
-                            keyTakeaways = listOf(
-                                TakeawayItem(title = "Plattform blockiert", details = "Die Plattform blockiert den externen Zugriff."),
-                                TakeawayItem(title = "Manuelle Alternative", details = "Nutze für diese Inhalte bitte den manuellen Text-Upload oder die Zwischenablage.")
-                            )
-                        )
-                    )
-                    return@launch
-                }
-
-                if (isYoutubeUrl(url)) {
-                    val videoId = extractYoutubeVideoId(url)
-                    if (videoId == null) {
+            viewModelScope.launch {
+                try {
+                    val trimmedUrl = rawUrl.trim()
+                    
+                    if (!com.example.data.GoogleMapsUrlParser.isGoogleMapsUrl(trimmedUrl)) {
                         _uiState.value = UiState.Error(
                             isPaywallOrBlocked = false,
-                            message = "Ungültige YouTube Video-ID",
-                            detail = "Details: Eine gültige 11-stellige YouTube Video-ID konnte nicht aus dem Link extrahiert werden. Bitte prüfe das Format der URL."
+                            message = "Ungültiger Google Maps Link",
+                            detail = "Der eingegebene Link ist keine gültige Google Maps URL. Bitte verwende einen gültigen Google Maps Link (z.B. mit 'maps.app.goo.gl' oder 'google.com/maps').",
+                            analysisId = analysisId
                         )
                         return@launch
                     }
 
-                    // Fetch the YouTube transcript on dispatcher IO
-                    val transcript = withContext(Dispatchers.IO) {
-                        try {
-                            YoutubeTranscriptHelper.fetchTranscript(videoId)
-                        } catch (e: Exception) {
-                            null
-                        }
-                    }
-
-                    // Try to fetch oembed metadata as a strong context fallback if transcript fails or is too short
-                    val oembedData = if (!hasEnoughRealContent(transcript)) {
-                        withContext(Dispatchers.IO) {
-                            try {
-                                YoutubeTranscriptHelper.fetchOembedMetadata(videoId)
-                            } catch (e: Exception) {
-                                null
-                            }
-                        }
-                    } else {
-                        null
-                    }
-
-                    if (analysisType == com.example.data.AnalysisType.TOP_3_KERNAUSSAGEN) {
-                        if (!hasEnoughRealContent(transcript) && oembedData == null) {
-                            _uiState.value = UiState.Success(
-                                DomainSummary(
-                                    title = "Inhalt nicht auslesbar",
-                                    originalUrl = url,
-                                    shortDescription = "Für diese Quelle konnte kein ausreichender Inhalt geladen werden, um echte Kernpunkte zu ermitteln.",
-                                    keyTakeaways = listOf(
-                                        TakeawayItem(title = "Seiteninhalt benötigt", details = "Die Funktion „3 Kernpunkte“ benötigt echten Seiteninhalt oder ein echtes YouTube-Transkript."),
-                                        TakeawayItem(title = "Keine Metadaten-Generierung", details = "Aus URL, Titel oder Metadaten werden bewusst keine Kernpunkte erzeugt, um falsche Ergebnisse zu vermeiden."),
-                                        TakeawayItem(title = "Alternative", details = "Bitte versuche es mit einer anderen URL oder kopiere den relevanten Text manuell in die App.")
-                                    )
-                                ),
-                                analysisType = analysisType
-                            )
-                            return@launch
-                        }
-                    } else if (analysisType == com.example.data.AnalysisType.FACTS_VS_OPINIONS_ANALYZER) {
-                        if (!hasEnoughRealContent(transcript) && oembedData == null) {
-                            _uiState.value = UiState.Success(
-                                DomainSummary(
-                                    title = "Inhalt nicht auswertbar",
-                                    originalUrl = url,
-                                    shortDescription = "Für diese Quelle konnte kein ausreichender Inhalt geladen werden, um die angeforderte Analyse zuverlässig durchzuführen.",
-                                    keyTakeaways = listOf(
-                                        TakeawayItem(title = "Inhalt benötigt", details = "Die Funktion benötigt tatsächlich auslesbaren Inhalt der Quelle."),
-                                        TakeawayItem(title = "Keine Metadaten-Generierung", details = "Aus URL, Titel oder Metadaten werden bewusst keine fachlichen Ergebnisse erzeugt."),
-                                        TakeawayItem(title = "Alternative", details = "Bitte prüfe die URL oder versuche eine andere Quelle.")
-                                    )
-                                ),
-                                analysisType = analysisType
-                            )
-                            return@launch
-                        }
-                    } else if (analysisType == com.example.data.AnalysisType.PERSPECTIVES_AND_COUNTERPOSITIONS) {
-                        if (!hasEnoughRealContent(transcript) && oembedData == null) {
-                            _uiState.value = UiState.Success(
-                                DomainSummary(
-                                    title = "Inhalt nicht auswertbar",
-                                    originalUrl = url,
-                                    shortDescription = "Für diese Quelle konnte kein ausreichender Inhalt geladen werden, um die angeforderte Analyse zuverlässig durchzuführen.",
-                                    keyTakeaways = listOf(
-                                        TakeawayItem(title = "Inhalt benötigt", details = "Die Funktion benötigt tatsächlich auslesbaren Inhalt der Quelle."),
-                                        TakeawayItem(title = "Keine Metadaten-Generierung", details = "Aus URL, Titel oder Metadaten werden bewusst keine fachlichen Ergebnisse erzeugt."),
-                                        TakeawayItem(title = "Alternative", details = "Bitte prüfe die URL oder versuche eine andere Quelle.")
-                                    )
-                                ),
-                                analysisType = analysisType
-                            )
-                            return@launch
-                        }
-                    }
-
-                    _uiState.value = UiState.Loading(LoadingStep.ANALYZING_INPUT)
-
-                    // Call backend model with full context text if transcript is available,
-                    // otherwise fall back to direct model fallback with detailed oembed metadata!
-                    _uiState.value = UiState.Loading(LoadingStep.GENERATING_OUTPUT)
-                    val summary = withContext(Dispatchers.IO) {
-                        if (hasEnoughRealContent(transcript)) {
-                            analyzeContentUseCase.execute(
-                                url = url,
-                                contentText = transcript,
-                                useSearchGrounding = false,
-                                analysisType = analysisType
-                            )
-                        } else if (oembedData != null) {
-                            val shortTranscriptText = if (!transcript.isNullOrBlank()) {
-                                "\n- Fragmentarisches Transkript (sehr kurz): $transcript"
-                            } else {
-                                ""
-                            }
-                            val robustContentText = """
-                                YOUTUBE-METADATEN-FALLBACK (Kein vollständiges Transkript verfügbar):
-                                - Video-Titel: ${oembedData.first}
-                                - YouTube-Kanal / Ersteller: ${oembedData.second}
-                                - Video-ID: $videoId
-                                - Original-URL: $url$shortTranscriptText
-                                
-                                WICHTIGE SICHERHEITS-INSTRUKTION FÜR DIE ANALYSE:
-                                Es ist KEIN vollständiges Transkript verfügbar. Halluziniere KEINE fiktiven Videoinhalte oder Details, die nicht aus dem Titel, Kanal und dem eventuell vorhandenen kurzen Fragment hervorgehen.
-                                Erstelle eine vorsichtige, informative Analyse ausschließlich auf Basis dieser Metadaten (Titel, Ersteller/Kanal, Thema).
-                                Mache im Ausgabetext (z.B. in der Kurzbeschreibung oder als erster Punkt) unmissverständlich klar, dass für diese Analyse kein vollständiges Video-Transkript ausgelesen werden konnte und die Ergebnisse auf den verfügbaren Metadaten basieren.
-                                Jede Behauptung über spezifischen gesprochenen Inhalt ohne Beleg ist zu vermeiden, um absolute Fakten-Integrität zu garantieren.
-                            """.trimIndent()
-                            
-                            analyzeContentUseCase.execute(
-                                url = url,
-                                contentText = robustContentText,
-                                useSearchGrounding = false,
-                                analysisType = analysisType
-                            )
-                        } else {
-                            // If both failed, use direct model summarization (uses Gemini's internal knowledge of the URL)
-                            analyzeContentUseCase.execute(
-                                url = url,
-                                contentText = null,
-                                useSearchGrounding = false,
-                                analysisType = analysisType
-                            )
-                        }
-                    }
-                    _uiState.value = UiState.Success(summary, analysisType)
-
-                } else {
-                    // Standard webpage
-                    if (!directContent.isNullOrBlank()) {
-                        if (analysisType == com.example.data.AnalysisType.TOP_3_KERNAUSSAGEN && !hasEnoughRealContent(directContent)) {
-                            _uiState.value = UiState.Success(
-                                DomainSummary(
-                                    title = "Inhalt nicht auslesbar",
-                                    originalUrl = url,
-                                    shortDescription = "Für diese Quelle konnte kein ausreichender Inhalt geladen werden, um echte Kernpunkte zu ermitteln.",
-                                    keyTakeaways = listOf(
-                                        TakeawayItem(title = "Seiteninhalt benötigt", details = "Die Funktion „3 Kernpunkte“ benötigt echten Seiteninhalt oder ein echtes YouTube-Transkript."),
-                                        TakeawayItem(title = "Keine Metadaten-Generierung", details = "Aus URL, Titel oder Metadaten werden bewusst keine Kernpunkte erzeugt, um falsche Ergebnisse zu vermeiden."),
-                                        TakeawayItem(title = "Alternative", details = "Bitte versuche es mit einer anderen URL oder kopiere den relevanten Text manuell in die App.")
-                                    )
-                                ),
-                                analysisType = analysisType
-                            )
-                            return@launch
-                        } else if (analysisType == com.example.data.AnalysisType.FACTS_VS_OPINIONS_ANALYZER && !hasEnoughRealContent(directContent)) {
-                            _uiState.value = UiState.Success(
-                                DomainSummary(
-                                    title = "Inhalt nicht auswertbar",
-                                    originalUrl = url,
-                                    shortDescription = "Für diese Quelle konnte kein ausreichender Inhalt geladen werden, um die angeforderte Analyse zuverlässig durchzuführen.",
-                                    keyTakeaways = listOf(
-                                        TakeawayItem(title = "Inhalt benötigt", details = "Die Funktion benötigt tatsächlich auslesbaren Inhalt der Quelle."),
-                                        TakeawayItem(title = "Keine Metadaten-Generierung", details = "Aus URL, Titel oder Metadaten werden bewusst keine fachlichen Ergebnisse erzeugt."),
-                                        TakeawayItem(title = "Alternative", details = "Bitte prüfe die URL oder versuche eine andere Quelle.")
-                                    )
-                                ),
-                                analysisType = analysisType
-                            )
-                            return@launch
-                        } else if (analysisType == com.example.data.AnalysisType.PERSPECTIVES_AND_COUNTERPOSITIONS && !hasEnoughRealContent(directContent)) {
-                            _uiState.value = UiState.Success(
-                                DomainSummary(
-                                    title = "Inhalt nicht auswertbar",
-                                    originalUrl = url,
-                                    shortDescription = "Für diese Quelle konnte kein ausreichender Inhalt geladen werden, um die angeforderte Analyse zuverlässig durchzuführen.",
-                                    keyTakeaways = listOf(
-                                        TakeawayItem(title = "Inhalt benötigt", details = "Die Funktion benötigt tatsächlich auslesbaren Inhalt der Quelle."),
-                                        TakeawayItem(title = "Keine Metadaten-Generierung", details = "Aus URL, Titel oder Metadaten werden bewusst keine fachlichen Ergebnisse erzeugt."),
-                                        TakeawayItem(title = "Alternative", details = "Bitte prüfe die URL oder versuche eine andere Quelle.")
-                                    )
-                                ),
-                                analysisType = analysisType
-                            )
-                            return@launch
-                        }
-
-                        // Der Nutzer hat direkt Text mitgeliefert (lokal abgefangen, Clipboard etc.)
-                        // Wir verwenden diesen Text und deaktiveren Search Grounding!
-                        _uiState.value = UiState.Loading(LoadingStep.ANALYZING_INPUT)
-                        _uiState.value = UiState.Loading(LoadingStep.GENERATING_OUTPUT)
-                        val summary = withContext(Dispatchers.IO) {
-                            analyzeContentUseCase.execute(
-                                url = url,
-                                contentText = directContent,
-                                useSearchGrounding = false,
-                                analysisType = analysisType
-                            )
-                        }
-                        _uiState.value = UiState.Success(summary, analysisType)
-                    } else {
-                        if (analysisType == com.example.data.AnalysisType.TOP_3_KERNAUSSAGEN ||
-                            analysisType == com.example.data.AnalysisType.FACTS_VS_OPINIONS_ANALYZER ||
-                            analysisType == com.example.data.AnalysisType.PERSPECTIVES_AND_COUNTERPOSITIONS
-                        ) {
-                            val scrapedText = withContext(Dispatchers.IO) {
-                                try {
-                                    WebpageExtractor.fetchContent(url)
-                                } catch (e: Exception) {
-                                    null
-                                }
-                            }
-
-                            if (!scrapedText.isNullOrBlank() && hasEnoughRealContent(scrapedText)) {
-                                _uiState.value = UiState.Loading(LoadingStep.ANALYZING_INPUT)
-                                _uiState.value = UiState.Loading(LoadingStep.GENERATING_OUTPUT)
-                                val summary = withContext(Dispatchers.IO) {
-                                    analyzeContentUseCase.execute(
-                                        url = url,
-                                        contentText = scrapedText,
-                                        useSearchGrounding = false,
-                                        analysisType = analysisType
-                                    )
-                                }
-                                _uiState.value = UiState.Success(summary, analysisType)
-                            } else {
-                                // Direct scraping failed or has not enough content -> fall back to Google Search Grounding
-                                _uiState.value = UiState.Loading(LoadingStep.ANALYZING_INPUT)
-                                _uiState.value = UiState.Loading(LoadingStep.GENERATING_OUTPUT)
-                                try {
-                                    val summary = withContext(Dispatchers.IO) {
-                                        analyzeContentUseCase.execute(
-                                            url = url,
-                                            contentText = null,
-                                            useSearchGrounding = true,
-                                            analysisType = analysisType
-                                        )
-                                    }
-                                    _uiState.value = UiState.Success(summary, analysisType)
-                                } catch (e: Exception) {
-                                    Log.w("MainViewModel", "Webpage Search Grounding failed for analysisType $analysisType", e)
-                                    // Strictly no direct model fallback! Instantly show the appropriate error summary!
-                                    if (analysisType == com.example.data.AnalysisType.TOP_3_KERNAUSSAGEN) {
-                                        _uiState.value = UiState.Success(
-                                            DomainSummary(
-                                                title = "Inhalt nicht auslesbar",
-                                                originalUrl = url,
-                                                shortDescription = "Für diese Quelle konnte kein ausreichender Inhalt geladen werden, um echte Kernpunkte zu ermitteln.",
-                                                keyTakeaways = listOf(
-                                                    TakeawayItem(title = "Seiteninhalt benötigt", details = "Die Funktion „3 Kernpunkte“ benötigt echten Seiteninhalt oder ein echtes YouTube-Transkript."),
-                                                    TakeawayItem(title = "Keine Metadaten-Generierung", details = "Aus URL, Titel oder Metadaten werden bewusst keine Kernpunkte erzeugt, um falsche Ergebnisse zu vermeiden."),
-                                                    TakeawayItem(title = "Alternative", details = "Bitte versuche es mit einer anderen URL oder kopiere den relevanten Text manuell in die App.")
-                                                )
-                                            ),
-                                            analysisType = analysisType
-                                        )
-                                    } else {
-                                        _uiState.value = UiState.Success(
-                                            DomainSummary(
-                                                title = "Inhalt nicht auswertbar",
-                                                originalUrl = url,
-                                                shortDescription = "Für diese Quelle konnte kein ausreichender Inhalt geladen werden, um die angeforderte Analyse zuverlässig durchzuführen.",
-                                                keyTakeaways = listOf(
-                                                    TakeawayItem(title = "Inhalt benötigt", details = "Die Funktion benötigt tatsächlich auslesbaren Inhalt der Quelle."),
-                                                    TakeawayItem(title = "Keine Metadaten-Generierung", details = "Aus URL, Titel oder Metadaten werden bewusst keine fachlichen Ergebnisse erzeugt."),
-                                                    TakeawayItem(title = "Alternative", details = "Bitte prüfe die URL oder versuche eine andere Quelle.")
-                                                )
-                                            ),
-                                            analysisType = analysisType
-                                        )
-                                    }
-                                }
-                            }
-                        } else {
-                            // Check if it is a social media or walled platform
-                            val isSocial = isSocialMediaOrWalledUrl(url)
-
-                            // Try direct scraping first for super-fast execution
-                            val scrapedText = withContext(Dispatchers.IO) {
-                                try {
-                                    WebpageExtractor.fetchContent(url)
-                                } catch (e: Exception) {
-                                    null
-                                }
-                            }
-
-                            _uiState.value = UiState.Loading(LoadingStep.ANALYZING_INPUT)
-                            _uiState.value = UiState.Loading(LoadingStep.GENERATING_OUTPUT)
-                            val summary = withContext(Dispatchers.IO) {
-                                if (!scrapedText.isNullOrBlank()) {
-                                    // Scrape succeeded: Use normal summarization (instant and works on FREE tier!)
-                                    analyzeContentUseCase.execute(
-                                        url = url,
-                                        contentText = scrapedText,
-                                        useSearchGrounding = false,
-                                        analysisType = analysisType
-                                    )
-                                } else if (isSocial) {
-                                    // For social media, do NOT use search grounding to avoid long hangs or quota/blocked errors.
-                                    // Instead, use a helpful diagnostic context telling the user how to easily copy and paste.
-                                    val platformName = when {
-                                        url.lowercase().contains("instagram") || url.lowercase().contains("instagr.am") -> "Instagram"
-                                        url.lowercase().contains("facebook") || url.lowercase().contains("fb.") || url.lowercase().contains("fb/share") -> "Facebook"
-                                        url.lowercase().contains("linkedin") || url.lowercase().contains("lnkd.in") -> "LinkedIn"
-                                        url.lowercase().contains("tiktok") -> "TikTok"
-                                        url.lowercase().contains("twitter") || url.lowercase().contains("x.com") || url.lowercase().contains("t.co") -> "X (Twitter)"
-                                        url.lowercase().contains("threads") -> "Threads"
-                                        url.lowercase().contains("pinterest") -> "Pinterest"
-                                        url.lowercase().contains("xing") -> "Xing"
-                                        else -> "Social Media"
-                                    }
-                                    val robustSocialContext = """
-                                        SOZIALE NETZWERKE DIAGNOSE (Inhalte hinter Login-Schranke):
-                                        - Plattform: ${'$'}platformName
-                                        - Quell-URL: ${'$'}url
-                                        
-                                        WICHTIGER HINWEIS AN GEMINI KI:
-                                        Da es sich um einen Link von ${'$'}platformName handelt, verlangt die Plattform eine Anmeldung/Login oder verhindert das Auslesen von externen Crawlern.
-                                        
-                                        Bitte generiere für den Nutzer auf DEUTSCH ein ansprechendes, klares Ergebnis im geforderten Daten-Schema.
-                                        Erstelle folgende genaue Inhalte:
-                                        1. title: "Geschützter Inhalt (${'$'}platformName)"
-                                        2. original_url: "${'$'}url"
-                                        3. short_description: "Da soziale Netzwerke wie ${'$'}platformName Anmeldeschranken besitzen, können wir diesen Link nicht direkt auslesen. Du kannst das aber ganz leicht umgehen!"
-                                        4. key_takeaways (Bulletpoints auf Deutsch):
-                                           - "Markiere den Beitragstext, das Profil oder die Details direkt in der passenden App oder im Browser."
-                                           - "Kopiere den markierten Text in die Zwischenablage."
-                                           - "Tippe hier im Abstractor auf 'Lösung für geschützte Seiten / Text analysieren', um den kopierten Inhalt sofort per KI auf Deutsch zusammenzufassen."
-                                           - "Sicherheit & Privatsphäre: Dadurch umgehst du jede Passwortschranke sicher und vollkommen ohne Anmeldung."
-                                    """.trimIndent()
-
-                                    analyzeContentUseCase.execute(
-                                        url = url,
-                                        contentText = robustSocialContext,
-                                        useSearchGrounding = false,
-                                        analysisType = analysisType
-                                    )
-                                } else {
-                                    // Scrape failed or page content is empty: Fall back to Google Search Grounding tool with retry fallback!
-                                    try {
-                                        analyzeContentUseCase.execute(
-                                            url = url,
-                                            contentText = null,
-                                            useSearchGrounding = true,
-                                            analysisType = analysisType
-                                        )
-                                    } catch (e: Exception) {
-                                        Log.w("MainViewModel", "Webpage Search Grounding failed, falling back to direct model fallback", e)
-                                        analyzeContentUseCase.execute(
-                                            url = url,
-                                            contentText = null,
-                                            useSearchGrounding = false,
-                                            analysisType = analysisType
-                                        )
-                                    }
-                                }
-                            }
-                            _uiState.value = UiState.Success(summary, analysisType)
-                        }
-                    }
-                }
-
-            } catch (e: IllegalArgumentException) {
-                if (e.message == "API_KEY_MISSING") {
-                    _uiState.value = UiState.Error(
-                        isPaywallOrBlocked = false,
-                        message = "Der Gemini API-Schlüssel fehlt oder ist ungültig.",
-                        detail = "Bitte trage deinen Google AI Studio API-Key im Secrets panel der AI Studio Benutzeroberfläche ein."
-                    )
-                } else {
-                    _uiState.value = UiState.Error(
-                        isPaywallOrBlocked = false,
-                        message = "Fehler bei der Vorgabe-Verarbeitung.",
-                        detail = e.localizedMessage
-                    )
-                }
-            } catch (e: Exception) {
-                val errorMsg = e.localizedMessage ?: ""
-                val isHttpError = e is retrofit2.HttpException
-                
-                if (isHttpError && e is retrofit2.HttpException) {
-                    val code = e.code()
-                    val errorBody = try { e.response()?.errorBody()?.string() ?: "" } catch (ex: Exception) { "" }
+                    _uiState.value = UiState.Loading(LoadingStep.FETCHING_DATA, analysisId)
                     
-                    if (code == 404 && (errorBody.contains("model is not found") || errorBody.contains("not found") || errorBody.contains("NOT_FOUND"))) {
-                        _uiState.value = UiState.Error(
-                            isPaywallOrBlocked = false,
-                            message = "Gemini-Modell nicht verfügbar",
-                            detail = "Die App versucht ein Gemini-Modell aufzurufen, das für diesen API-Endpunkt nicht verfügbar ist. Bitte prüfe die Modellkonfiguration der App.\n\nHTTP 404 / NOT_FOUND\nAPI-Antwort:\n$errorBody"
-                        )
-                    } else if (code == 429 || errorBody.contains("RESOURCE_EXHAUSTED") || errorBody.contains("quota")) {
-                        _uiState.value = UiState.Error(
-                            isPaywallOrBlocked = false,
-                            message = "Gemini-Limit erreicht",
-                            detail = "Das API-Anfragelimit (Quota/Billing) wurde überschritten oder dein Budget auf diesem API-Schlüssel ist erschöpft. Bitte prüfe deine Service-Limits und Kontingente im Google AI Studio.\n\nHTTP 429 / RESOURCE_EXHAUSTED\nAPI-Antwort:\n$errorBody"
-                        )
-                    } else if (code == 401 || code == 403 || errorBody.contains("API_KEY_INVALID") || errorBody.contains("INVALID_ARGUMENT") || errorBody.contains("unauthorized") || errorBody.contains("permission")) {
-                        _uiState.value = UiState.Error(
-                            isPaywallOrBlocked = true,
-                            message = "API-Key oder Berechtigung fehlerhaft",
-                            detail = "Deine Anfrage wurde abgewiesen. Bitte prüfe deinen API-Key, dein Projekt, die Berechtigungen im Secrets panel oder ob die Abrechnung (Billing) korrekt eingerichtet ist.\n\nHTTP $code\nAPI-Antwort:\n$errorBody"
-                        )
-                    } else if (code == 503 || errorBody.contains("UNAVAILABLE") || errorBody.contains("experiencing high demand") || errorBody.contains("temporary")) {
-                        _uiState.value = UiState.Error(
-                            isPaywallOrBlocked = false,
-                            message = "Gemini ist vorübergehend überlastet",
-                            detail = "Das Gemini-Modell ist zurzeit überlastet (503 Service Unavailable / High Demand) und kann keine Anfragen entgegennehmen. Bitte versuche es in wenigen Minuten erneut.\n\nHTTP 503 / UNAVAILABLE\nAPI-Antwort:\n$errorBody"
-                        )
-                    } else {
-                        _uiState.value = UiState.Error(
-                            isPaywallOrBlocked = false,
-                            message = "Fehler bei der Gemini-KI-Anfrage (HTTP $code)",
-                            detail = "Es gab ein Problem beim Aufrufen der Gemini-API.\n\nAPI-Antwort:\n$errorBody"
+                    val pocResult = withContext(Dispatchers.IO) {
+                        val resolved = com.example.data.GoogleMapsUrlParser.resolveShortUrl(trimmedUrl)
+                        com.example.data.GoogleMapsUrlParser.parseGoogleMapsUrl(
+                            originalText = trimmedUrl,
+                            url = trimmedUrl,
+                            resolvedUrl = resolved.first,
+                            resolutionStatus = resolved.second
                         )
                     }
-                } else {
-                    // Regular network, paywall, scraping or timeout errors
-                    val isBlocked = errorMsg.contains("403") || errorMsg.contains("401") || errorMsg.contains("blocked") || errorMsg.contains("Paywall") || errorMsg.contains("robots")
-                    val isTimeout = e is java.net.SocketTimeoutException || errorMsg.contains("timeout", ignoreCase = true) || errorMsg.contains("timed out", ignoreCase = true)
 
-                    if (isTimeout) {
-                        _uiState.value = UiState.Error(
-                            isPaywallOrBlocked = false,
-                            message = "Verbindungs-Timeout (Zeitüberschreitung)",
-                            detail = "Das Google Search Grounding Tool von Gemini oder die Verbindung hat zu lange für die Live-Antwort gebraucht. Bei sehr detaillierten Webseiten oder Video-Suchen kann dies vorkommen.\n\nBitte klicke einfach auf „Erneut versuchen“!"
+                    _uiState.value = UiState.Loading(LoadingStep.ANALYZING_INPUT, analysisId)
+
+                    val placesResult = withContext(Dispatchers.IO) {
+                        com.example.data.PlacesApiService.performStufe1Analysis(trimmedUrl, pocResult)
+                    }
+
+                    _uiState.value = UiState.Loading(LoadingStep.GENERATING_OUTPUT, analysisId)
+
+                    val isSuccessful = pocResult.resolutionStatus == "SUCCESS" && placesResult.apiStatus == "PLACE_DETAILS_SUCCESS"
+
+                    if (isSuccessful) {
+                        val mapperText = com.example.data.PlacesDataMapper.mapToGeminiInput(placesResult)
+                        val canonicalInput = com.example.domain.model.CanonicalAnalysisInput(
+                            sourceType = com.example.domain.model.SourceType.WEB,
+                            rawText = trimmedUrl,
+                            enrichedText = mapperText,
+                            metadata = mapOf(
+                                "url" to trimmedUrl,
+                                "title" to (placesResult.displayName?.text ?: placesResult.urlDerivedName ?: "Google Maps Location")
+                            ),
+                            analysisId = analysisId,
+                            analysisType = com.example.data.AnalysisType.GOOGLE_MAPS_ANALYZER
+                        )
+
+                        val summary = try {
+                            analyzeContentUseCase.execute(canonicalInput)
+                        } catch (geminiException: Exception) {
+                            Log.e("MainViewModel", "Gemini analysis failed, executing fallback visual summary", geminiException)
+                            
+                            val takeaways = mutableListOf<com.example.domain.model.TakeawayItem>()
+                            
+                            val locationName = placesResult.displayName?.text ?: pocResult.placeName ?: "Unbekannter Ort"
+                            takeaways.add(com.example.domain.model.TakeawayItem("Überblick & Konzept", "Konzeptanalyse für: $locationName. Eine KI-Analyse war aufgrund eines Verbindungsfehlers nicht möglich."))
+                            
+                            placesResult.formattedAddress?.let { 
+                                takeaways.add(com.example.domain.model.TakeawayItem("Formatierte Adresse", it)) 
+                            }
+                            
+                            placesResult.types?.let { types ->
+                                if (types.isNotEmpty()) {
+                                    takeaways.add(com.example.domain.model.TakeawayItem("Kategorien", types.joinToString(", ")))
+                                }
+                            }
+                            
+                            if (placesResult.rating != null) {
+                                takeaways.add(com.example.domain.model.TakeawayItem("Bewertungen", "${placesResult.rating} von 5 Sternen (${placesResult.userRatingCount ?: 0} Bewertungen)"))
+                            }
+                            
+                            if (placesResult.latitude != null && placesResult.longitude != null) {
+                                takeaways.add(com.example.domain.model.TakeawayItem("Koordinaten", "Latitude: ${placesResult.latitude}, Longitude: ${placesResult.longitude}"))
+                            }
+                            
+                            if (placesResult.warnings.isNotEmpty()) {
+                                takeaways.add(com.example.domain.model.TakeawayItem("Informationen", placesResult.warnings.joinToString("\n")))
+                            }
+
+                            com.example.domain.model.DomainSummary(
+                                id = "maps_fallback_${System.currentTimeMillis()}",
+                                title = locationName,
+                                originalUrl = trimmedUrl,
+                                shortDescription = "Technische Datenansicht von $locationName (KI-Analyse-Fallback).",
+                                keyTakeaways = takeaways,
+                                analysisId = "maps_poc"
+                            )
+                        }
+
+                        _uiState.value = UiState.Success(
+                            summary = summary,
+                            analysisType = com.example.data.AnalysisType.GOOGLE_MAPS_ANALYZER,
+                            analysisId = analysisId
                         )
                     } else {
+                        val errorDetail = StringBuilder()
+                        errorDetail.append("Status: ${pocResult.resolutionStatus}\n")
+                        if (placesResult.warnings.isNotEmpty()) {
+                            errorDetail.append("Meldungen: ${placesResult.warnings.joinToString()}\n")
+                        } else {
+                            errorDetail.append("Es konnten keine Ortsparameter extrahiert werden.\n")
+                        }
+                        _uiState.value = UiState.Error(
+                            isPaywallOrBlocked = false,
+                            message = "Google Maps Analyzer Fehler",
+                            detail = errorDetail.toString(),
+                            analysisId = analysisId
+                        )
+                    }
+                } catch (e: Exception) {
+                    _uiState.value = UiState.Error(
+                        isPaywallOrBlocked = false,
+                        message = "Google Maps Analyzer Fehler",
+                        detail = e.localizedMessage ?: e.toString(),
+                        analysisId = analysisId
+                    )
+                }
+            }
+            return
+        }
+
+        val analysisId = java.util.UUID.randomUUID().toString() + "|" + analysisType.name
+        _currentAnalysisType.value = analysisType
+        _currentUrl.value = rawUrl
+        _currentTitle.value = "Webseite analysieren"
+        _uiState.value = UiState.Loading(LoadingStep.FETCHING_DATA, analysisId)
+        android.util.Log.i("RUNTIME_SMOKE", "INPUT_SELECTED - AnalysisType: $analysisType, URL: $rawUrl, HasDirect: ${!directContent.isNullOrBlank()}")
+        
+        val sourceTrigger = if (!directContent.isNullOrBlank()) "DIRECT_TEXT" else "MANUAL_URL"
+        com.example.data.PipelineReportStore.startNewReport(sourceTrigger = sourceTrigger)
+        
+        com.example.data.PipelineReportStore.startStep("input_intake", "Input Intake", "URL: $rawUrl")
+        com.example.data.PipelineReportStore.updateSection("input_intake") { map ->
+            map["rawInput"] = rawUrl
+            map["rawInputLength"] = rawUrl.length
+            map["inputTypeDetected"] = if (!directContent.isNullOrBlank()) "DIRECT_TEXT" else "WEB_URL"
+            map["inputSource"] = if (!directContent.isNullOrBlank()) "DIRECT_TEXT" else "MANUAL_URL"
+            map["receivedUrl"] = rawUrl
+            map["urlVisibleInInputField"] = rawUrl
+            map["inputAccepted"] = true
+        }
+        com.example.data.PipelineReportStore.endStepPass("input_intake", "Input accepted successfully", decision = "Execute ID resolution")
+
+        com.example.data.PipelineReportStore.startStep("notation_and_id_resolution", "Notation and ID Resolution")
+        com.example.data.PipelineReportStore.updateSection("notation_and_id_resolution") { map ->
+            map["originalAnalysisType"] = analysisType.name
+            map["canonicalAnalysisType"] = analysisType.canonical().name
+            map["functionId"] = analysisType.canonical().name
+            map["featureId"] = analysisType.canonical().name
+            map["registryKey"] = analysisType.canonical().name
+            map["promptKey"] = analysisType.canonical().name
+            map["legacyTypeDetected"] = (analysisType != analysisType.canonical())
+            map["legacyTypeValue"] = analysisType.name
+            map["canonicalMappingApplied"] = true
+            map["canonicalMappingSource"] = "Enum Canonical Mapping"
+        }
+        com.example.data.PipelineReportStore.endStepPass("notation_and_id_resolution", "ID resolution passed. Canonical Type: ${analysisType.canonical().name}", decision = "Perform feature routing")
+
+        com.example.data.PipelineReportStore.startStep("feature_routing", "Feature Routing")
+        com.example.data.PipelineReportStore.updateSection("feature_routing") { map ->
+            val matchedFeat = com.example.ui.metadata.FeatureCatalog.features.find {
+                it.functionId == analysisType.canonical().name || it.analysisType == analysisType.canonical()
+            }
+            val catName = matchedFeat?.let { feat ->
+                com.example.ui.metadata.FeatureCatalog.categories.find { it.id == feat.category }?.name
+            } ?: "Verstehen & Verdichten"
+            map["selectedFeatureTitle"] = matchedFeat?.name ?: analysisType.canonical().name
+            map["selectedFeatureCategory"] = catName
+            map["acceptedInputs"] = matchedFeat?.acceptedInputs?.joinToString { it.name } ?: "WEB"
+            map["featureEnabled"] = matchedFeat?.enabled ?: true
+            map["featureVisible"] = matchedFeat?.visible ?: true
+            map["routeSource"] = "UI Trigger"
+            map["routeDecision"] = "Route to content extraction"
+            map["routeTargetAnalysisType"] = analysisType.canonical().name
+        }
+        com.example.data.PipelineReportStore.endStepPass("feature_routing", "Feature routing successfully completed", decision = "Proceed to content extraction")
+
+        viewModelScope.launch {
+            try {
+                if (analysisType.canonical() == com.example.data.AnalysisType.FREE_SOURCE_QUERY && freeQuery.isNullOrBlank()) {
+                    _uiState.value = UiState.Error(
+                        isPaywallOrBlocked = false,
+                        message = "Bitte stelle eine Frage zur Quelle.",
+                        detail = "Die freie Quellenanfrage erfordert eine konkrete Angabe im Eingabefeld, damit die KI antworten kann.",
+                        analysisId = analysisId
+                    )
+                    return@launch
+                }
+
+                _uiState.value = UiState.Loading(LoadingStep.FETCHING_DATA, analysisId)
+                val extractionResult = extractContentUseCase.execute(rawUrl, directContent, analysisType, freeQuery, analysisId)
+
+                when (extractionResult) {
+                    is com.example.domain.model.ContentExtractionResult.Failure -> {
+                        android.util.Log.e("RUNTIME_SMOKE", "RUNTIME_SMOKE_FAIL - Extraction failed: ${extractionResult.message}")
+                        com.example.data.GatewayDiagnostics.failureStage = "CONTENT_EXTRACTION"
+                        val isBlocked = extractionResult.errorType == com.example.domain.model.ContentExtractionResult.Failure.ErrorType.BLOCKED_SOURCE
                         _uiState.value = UiState.Error(
                             isPaywallOrBlocked = isBlocked,
-                            message = if (isBlocked) "Gesperrte Seite, kann nicht zusammengefasst werden" else "Inhalt konnte nicht geladen werden",
-                            detail = errorMsg
+                            message = extractionResult.message,
+                            detail = extractionResult.detail,
+                            analysisId = analysisId
                         )
                     }
+                    is com.example.domain.model.ContentExtractionResult.Predefined -> {
+                        android.util.Log.i("RUNTIME_SMOKE", "EXTRACTION_SUCCESS - Predefined content loaded.")
+                        _currentUrl.value = extractionResult.summary.originalUrl
+                        _currentTitle.value = extractionResult.summary.title
+                        _uiState.value = UiState.Success(extractionResult.summary, analysisType, analysisId)
+                        android.util.Log.i("RUNTIME_SMOKE", "RESULT_RENDERED - Predefined content rendered")
+                        android.util.Log.i("RUNTIME_SMOKE", "RUNTIME_SMOKE_PASS - Complete flow finished.")
+                    }
+                    is com.example.domain.model.ContentExtractionResult.Degraded -> {
+                        _uiState.value = UiState.Loading(LoadingStep.ANALYZING_INPUT, analysisId)
+                        _uiState.value = UiState.Loading(LoadingStep.GENERATING_OUTPUT, analysisId)
+
+                        val content = extractionResult.content
+                        android.util.Log.i("RUNTIME_SMOKE", "EXTRACTION_DEGRADED - SourceType: ${content.sourceType}")
+                        _currentUrl.value = content.metadata["url"] ?: rawUrl
+
+                        val metadataHeader = """
+                            [METADATEN-FALLBACK - KEIN TRANSKRIPT VERFÜGBAR]
+                            Achtung: Dieses Video hat kein Transkript. Führe eine reine Metadatenanalyse auf Basis der verfügbaren Videobeschreibung und der Metadaten durch.
+                            
+                        """.trimIndent()
+
+                        val finalInput = CanonicalAnalysisInput(
+                            sourceType = content.sourceType,
+                            rawText = metadataHeader + content.rawText,
+                            enrichedText = metadataHeader + content.enrichedText,
+                            metadata = content.metadata,
+                            analysisId = analysisId
+                        )
+                        com.example.data.GatewayDiagnostics.sourceContentLengthSent = finalInput.rawText.length
+
+                        val targetType = if (content.sourceType == SourceType.YOUTUBE) {
+                            com.example.data.AnalysisType.MULTIMEDIA_ANALYSIS
+                        } else {
+                            analysisType
+                        }
+
+                        try {
+                            val summary = withContext(Dispatchers.IO) {
+                                analyzeContentUseCase.execute(
+                                    input = finalInput,
+                                    useSearchGrounding = content.useSearchGrounding,
+                                    analysisType = targetType,
+                                    freeQuery = freeQuery
+                                )
+                            }
+                            // Ensure fallbackUsed is set to true and preserve Gemini's generated shortDescription
+                            val finalSummary = summary.copy(fallbackUsed = true)
+                            _uiState.value = UiState.Success(finalSummary, targetType, analysisId)
+                            android.util.Log.i("RUNTIME_SMOKE", "RESULT_RENDERED - Degraded analysis result rendered successfully")
+                            android.util.Log.i("RUNTIME_SMOKE", "RUNTIME_SMOKE_PASS - Complete flow finished.")
+                        } catch (e: Exception) {
+                            android.util.Log.e("RUNTIME_SMOKE", "RUNTIME_SMOKE_FAIL - Degraded flow failed with exception: ${e.message}")
+                            handleError(e, analysisId)
+                        }
+                    }
+                    is com.example.domain.model.ContentExtractionResult.Success -> {
+                        _uiState.value = UiState.Loading(LoadingStep.ANALYZING_INPUT, analysisId)
+                        _uiState.value = UiState.Loading(LoadingStep.GENERATING_OUTPUT, analysisId)
+
+                        val content = extractionResult.content
+                        android.util.Log.i("RUNTIME_SMOKE", "EXTRACTION_SUCCESS - SourceType: ${content.sourceType}")
+                        _currentUrl.value = content.metadata["url"] ?: rawUrl
+
+                        val finalInput = CanonicalAnalysisInput(
+                            sourceType = content.sourceType,
+                            rawText = content.rawText,
+                            enrichedText = content.enrichedText,
+                            metadata = content.metadata,
+                            analysisId = analysisId
+                        )
+                        com.example.data.GatewayDiagnostics.sourceContentLengthSent = finalInput.rawText.length
+
+                        val targetType = if (content.sourceType == SourceType.YOUTUBE) {
+                            com.example.data.AnalysisType.MULTIMEDIA_ANALYSIS
+                        } else {
+                            analysisType
+                        }
+
+                        try {
+                            val summary = withContext(Dispatchers.IO) {
+                                analyzeContentUseCase.execute(
+                                    input = finalInput,
+                                    useSearchGrounding = content.useSearchGrounding,
+                                    analysisType = targetType,
+                                    freeQuery = freeQuery
+                                )
+                            }
+                            _uiState.value = UiState.Success(summary, targetType, analysisId)
+                            android.util.Log.i("RUNTIME_SMOKE", "RESULT_RENDERED - Analysis result rendered successfully")
+                            android.util.Log.i("RUNTIME_SMOKE", "RUNTIME_SMOKE_PASS - Complete flow finished.")
+                        } catch (e: Exception) {
+                            android.util.Log.e("RUNTIME_SMOKE", "RUNTIME_SMOKE_FAIL - Flow failed with exception: ${e.message}")
+                            handleError(e, analysisId)
+                        }
+                    }
                 }
+
+            } catch (e: Exception) {
+                handleError(e, analysisId)
             }
         }
     }
 
-    private fun extractUrl(text: String): String? {
-        return com.example.data.YoutubeUrlDecoder.extractUrl(text)
+    private fun handleError(e: Throwable, analysisId: String) {
+        val errorMsg = e.localizedMessage ?: ""
+        val isHttpError = e is retrofit2.HttpException
+        
+        if (e is retrofit2.HttpException) {
+            val code = e.code()
+            val errorBody = try { e.response()?.errorBody()?.string() ?: "" } catch (ex: Exception) { "" }
+            
+            if (code == 404 && (errorBody.contains("model is not found") || errorBody.contains("not found") || errorBody.contains("NOT_FOUND"))) {
+                _uiState.value = UiState.Error(
+                    isPaywallOrBlocked = false,
+                    message = "Gemini-Modell nicht verfügbar",
+                    detail = "Die App versucht ein Gemini-Modell aufzurufen, das für diesen API-Endpunkt nicht verfügbar ist. Bitte prüfe die Modellkonfiguration der App.\n\nHTTP 404 / NOT_FOUND\nAPI-Antwort:\n$errorBody",
+                    analysisId = analysisId
+                )
+            } else if (code == 429 || errorBody.contains("RESOURCE_EXHAUSTED") || errorBody.contains("quota")) {
+                _uiState.value = UiState.Error(
+                    isPaywallOrBlocked = false,
+                    message = "Gemini-Limit erreicht",
+                    detail = "Das API-Anfragelimit (Quota/Billing) wurde überschritten oder dein Budget auf diesem API-Schlüssel ist erschöpft. Bitte prüfe deine Service-Limits und Kontingente im Google AI Studio.\n\nHTTP 429 / RESOURCE_EXHAUSTED\nAPI-Antwort:\n$errorBody",
+                    analysisId = analysisId
+                )
+            } else if (code == 401 || code == 403 || errorBody.contains("API_KEY_INVALID") || errorBody.contains("INVALID_ARGUMENT") || errorBody.contains("unauthorized") || errorBody.contains("permission")) {
+                _uiState.value = UiState.Error(
+                    isPaywallOrBlocked = true,
+                    message = "API-Key oder Berechtigung fehlerhaft",
+                    detail = "Deine Anfrage wurde abgewiesen. Bitte prüfe deinen API-Key, dein Projekt, die Berechtigungen im Secrets panel oder ob die Abrechnung (Billing) korrekt eingerichtet ist.\n\nHTTP $code\nAPI-Antwort:\n$errorBody",
+                    analysisId = analysisId
+                )
+            } else if (code == 503 || errorBody.contains("UNAVAILABLE") || errorBody.contains("experiencing high demand") || errorBody.contains("temporary")) {
+                _uiState.value = UiState.Error(
+                    isPaywallOrBlocked = false,
+                    message = "Gemini ist vorübergehend überlastet",
+                    detail = "Das Gemini-Modell ist zurzeit überlastet (503 Service Unavailable / High Demand) und kann keine Anfragen entgegennehmen. Bitte versuche es in wenigen Minuten erneut.\n\nHTTP 503 / UNAVAILABLE\nAPI-Antwort:\n$errorBody",
+                    analysisId = analysisId
+                )
+            } else {
+                _uiState.value = UiState.Error(
+                    isPaywallOrBlocked = false,
+                    message = "Fehler bei der Gemini-KI-Anfrage (HTTP $code)",
+                    detail = "Es gab ein Problem beim Aufrufen der Gemini-API.\n\nAPI-Antwort:\n$errorBody",
+                    analysisId = analysisId
+                )
+            }
+        } else if (e is IllegalArgumentException && e.message == "API_KEY_MISSING") {
+            _uiState.value = UiState.Error(
+                isPaywallOrBlocked = false,
+                message = "Der Gemini API-Schlüssel fehlt oder ist ungültig.",
+                detail = "Bitte trage deinen Google AI Studio API-Key im Secrets panel der AI Studio Benutzeroberfläche ein.",
+                analysisId = analysisId
+            )
+        } else {
+            val isDnsOrConnectError = e is java.net.UnknownHostException || e is java.net.ConnectException || 
+                    errorMsg.contains("Unable to resolve host", ignoreCase = true) || 
+                    errorMsg.contains("No address associated with hostname", ignoreCase = true) ||
+                    errorMsg.contains("Failed to connect to", ignoreCase = true)
+            val isContractViolation = errorMsg.contains("Contract violation", ignoreCase = true)
+            val isParserOrContractFailure = errorMsg.contains("ParserFailure", ignoreCase = true) || 
+                    errorMsg.contains("Validation failed", ignoreCase = true) || 
+                    errorMsg.contains("STRUCTURED_EXTRACTION_FAILED", ignoreCase = true) || 
+                    errorMsg.contains("unparsed JSON", ignoreCase = true) || 
+                    isContractViolation
+            val isBlocked = errorMsg.contains("403") || errorMsg.contains("401") || errorMsg.contains("blocked") || errorMsg.contains("Paywall") || errorMsg.contains("robots")
+            val isTimeout = e is java.net.SocketTimeoutException || errorMsg.contains("timeout", ignoreCase = true) || errorMsg.contains("timed out", ignoreCase = true)
+
+            if (isDnsOrConnectError) {
+                _uiState.value = UiState.Error(
+                    isPaywallOrBlocked = false,
+                    message = "KI-Dienst nicht erreichbar",
+                    detail = "Die App konnte keine Verbindung zum Google Gemini-Dienst aufbauen.\n\nBitte prüfe, ob dein Smartphone eine aktive Internetverbindung hat und ob DNS-Anfragen für 'generativelanguage.googleapis.com' erlaubt sind (z. B. Adblocker oder Firmen-VPN deaktivieren).\n\nFehler: $errorMsg",
+                    analysisId = analysisId
+                )
+            } else if (isParserOrContractFailure) {
+                _uiState.value = UiState.Error(
+                    isPaywallOrBlocked = false,
+                    message = "KI-Ergebnis konnte nicht verarbeitet werden",
+                    detail = "Die KI-Antwort enthielt ein nicht korrekt verarbeitetes JSON-Format.",
+                    analysisId = analysisId
+                )
+            } else if (isTimeout) {
+                _uiState.value = UiState.Error(
+                    isPaywallOrBlocked = false,
+                    message = "Verbindungs-Timeout (Zeitüberschreitung)",
+                    detail = "Das Google Search Grounding Tool von Gemini oder die Verbindung hat zu lange für die Live-Antwort gebraucht. Bei sehr detaillierten Webseiten oder Video-Suchen kann dies vorkommen.\n\nBitte klicke einfach auf „Erneut versuchen“!",
+                    analysisId = analysisId
+                )
+            } else {
+                _uiState.value = UiState.Error(
+                    isPaywallOrBlocked = isBlocked,
+                    message = if (isBlocked) "Gesperrte Seite, kann nicht zusammengefasst werden" else "Inhalt konnte nicht geladen werden",
+                    detail = errorMsg,
+                    analysisId = analysisId
+                )
+            }
+        }
     }
 
-    private fun hasEnoughRealContent(content: String?): Boolean {
-        return !content.isNullOrBlank() && content.trim().length >= 500
-    }
+    fun summarizeFileUri(
+        context: android.content.Context,
+        uri: android.net.Uri,
+        analysisType: com.example.data.AnalysisType = com.example.data.AnalysisType.DOCUMENT_SUMMARY
+    ) {
+        val analysisId = java.util.UUID.randomUUID().toString() + "|" + analysisType.name
+        _currentAnalysisType.value = analysisType
+        _uiState.value = UiState.Loading(LoadingStep.FETCHING_DATA, analysisId)
+        
+        com.example.data.PipelineReportStore.startNewReport(sourceTrigger = "FILE_PICKER")
+        
+        com.example.data.PipelineReportStore.startStep("input_intake", "Input Intake", "URI: $uri")
+        com.example.data.PipelineReportStore.updateSection("input_intake") { map ->
+            map["rawInput"] = uri.toString()
+            map["rawInputLength"] = uri.toString().length
+            map["inputTypeDetected"] = "FILE_URI"
+            map["inputSource"] = "FILE_PICKER"
+            map["receivedUrl"] = uri.toString()
+            map["inputAccepted"] = true
+        }
+        com.example.data.PipelineReportStore.endStepPass("input_intake", "File input accepted", decision = "Execute ID resolution")
 
-    private fun isYoutubeUrl(url: String): Boolean {
-        return com.example.data.YoutubeUrlDecoder.isYoutubeUrl(url)
-    }
+        com.example.data.PipelineReportStore.startStep("notation_and_id_resolution", "Notation and ID Resolution")
+        com.example.data.PipelineReportStore.updateSection("notation_and_id_resolution") { map ->
+            map["originalAnalysisType"] = analysisType.name
+            map["canonicalAnalysisType"] = analysisType.canonical().name
+            map["functionId"] = analysisType.canonical().name
+            map["featureId"] = analysisType.canonical().name
+            map["registryKey"] = analysisType.canonical().name
+            map["promptKey"] = analysisType.canonical().name
+            map["legacyTypeDetected"] = (analysisType != analysisType.canonical())
+            map["legacyTypeValue"] = analysisType.name
+            map["canonicalMappingApplied"] = true
+            map["canonicalMappingSource"] = "Enum Canonical Mapping"
+        }
+        com.example.data.PipelineReportStore.endStepPass("notation_and_id_resolution", "ID resolution passed. Canonical Type: ${analysisType.canonical().name}", decision = "Perform feature routing")
 
-    private fun isSocialMediaOrWalledUrl(url: String): Boolean {
-        val lower = url.lowercase()
-        return lower.contains("instagram.com") ||
-               lower.contains("instagr.am") ||
-               lower.contains("facebook.com") ||
-               lower.contains("fb.watch") ||
-               lower.contains("fb.com") ||
-               lower.contains("fb.me") ||
-               lower.contains("linkedin.com") ||
-               lower.contains("lnkd.in") ||
-               lower.contains("tiktok.com") ||
-               lower.contains("twitter.com") ||
-               lower.contains("x.com") ||
-               lower.contains("t.co") ||
-               lower.contains("threads.net") ||
-               lower.contains("pinterest.com") ||
-               lower.contains("xing.com")
-    }
+        com.example.data.PipelineReportStore.startStep("feature_routing", "Feature Routing")
+        com.example.data.PipelineReportStore.updateSection("feature_routing") { map ->
+            val matchedFeat = com.example.ui.metadata.FeatureCatalog.features.find {
+                it.functionId == analysisType.canonical().name || it.analysisType == analysisType.canonical()
+            }
+            val catName = matchedFeat?.let { feat ->
+                com.example.ui.metadata.FeatureCatalog.categories.find { it.id == feat.category }?.name
+            } ?: "Arbeiten mit Dateien"
+            map["selectedFeatureTitle"] = matchedFeat?.name ?: analysisType.canonical().name
+            map["selectedFeatureCategory"] = catName
+            map["acceptedInputs"] = matchedFeat?.acceptedInputs?.joinToString { it.name } ?: "DOCUMENT"
+            map["featureEnabled"] = matchedFeat?.enabled ?: true
+            map["featureVisible"] = matchedFeat?.visible ?: true
+            map["routeSource"] = "UI Trigger"
+            map["routeDecision"] = "Route to file content extractor"
+            map["routeTargetAnalysisType"] = analysisType.canonical().name
+        }
+        com.example.data.PipelineReportStore.endStepPass("feature_routing", "Feature routing completed", decision = "Proceed to content extraction")
 
-    private fun extractYoutubeVideoId(url: String): String? {
-        return com.example.data.YoutubeUrlDecoder.extractYoutubeVideoId(url)
-    }
-
-    fun summarizeFileUri(context: android.content.Context, uri: android.net.Uri) {
-        _currentAnalysisType.value = com.example.data.AnalysisType.DOKUMENTE
-        _uiState.value = UiState.Loading(LoadingStep.FETCHING_DATA)
         viewModelScope.launch {
             try {
                 val contentResolver = context.contentResolver
                 val fileName = getFileName(contentResolver, uri) ?: "Dokument"
                 _currentUrl.value = uri.toString()
                 _currentTitle.value = fileName
-                _uiState.value = UiState.Loading(LoadingStep.ANALYZING_INPUT)
+                _uiState.value = UiState.Loading(LoadingStep.ANALYZING_INPUT, analysisId)
                 val mimeType = com.example.data.FileProcessingHelper.getMimeType(contentResolver, uri)
+                val lower = fileName.lowercase()
+                val isPdf = lower.endsWith(".pdf") || mimeType == "application/pdf"
                 
-                if (com.example.data.FileProcessingHelper.isExtractableTextType(mimeType, fileName)) {
-                    // Modern local text extraction bypasses multimodal binary upload issues entirely
-                    val extractedText = withContext(Dispatchers.IO) {
-                        com.example.data.FileProcessingHelper.extractTextFromUri(contentResolver, uri, mimeType, fileName)
-                    }
-                    if (extractedText != null && extractedText.isNotBlank()) {
-                        _uiState.value = UiState.Loading(LoadingStep.GENERATING_OUTPUT)
-                        val summary = withContext(Dispatchers.IO) {
-                            analyzeContentUseCase.executeFromText(extractedText, fileName)
-                        }
-                        _uiState.value = UiState.Success(summary, com.example.data.AnalysisType.DOKUMENTE)
-                        return@launch
-                    }
-                }
-
-                // If not extractable as text locally (like PDF, images, etc.), use the multimodal pipeline
-                // Check if the file type is supported organically by Gemini as raw inlineData
-                val isImageOrPdf = mimeType.startsWith("image/", ignoreCase = true) || mimeType == "application/pdf"
-                if (!isImageOrPdf) {
-                    _uiState.value = UiState.Error(
-                        isPaywallOrBlocked = false,
-                        message = "Dateiformat wird nicht vollständig unterstützt",
-                        detail = "Die lokale XML-Text-Extraktion konnte für diese Datei keinen lesbaren Inhalt finden. Diese App unterstützt Textdateien, modern formatierte Microsoft Office-Dokumente (.docx, .xlsx, .pptx), PDF-Dokumente sowie Bilder (Screenshots/Fotos)."
-                    )
-                    return@launch
-                }
+                android.util.Log.d("PDF_DEBUG", "START: Dateiname: $fileName, URI: $uri, MIME-Type: $mimeType, PDF erkannt: $isPdf")
+                println("PDF_DEBUG: START: Dateiname: $fileName, URI: $uri, MIME-Type: $mimeType, PDF erkannt: $isPdf")
 
                 val bytes = withContext(Dispatchers.IO) {
                     com.example.data.FileProcessingHelper.readUriToByteArray(contentResolver, uri)
                 }
+                if (bytes == null) {
+                    android.util.Log.e("PDF_DEBUG", "FEHLER: Konnte Bytes von URI nicht lesen.")
+                    println("PDF_DEBUG: FEHLER: Konnte Bytes von URI nicht lesen.")
+                    throw java.io.IOException("INSUFFICIENT_DOCUMENT_CONTENT")
+                }
+                
+                val byteSize = bytes.size
+                android.util.Log.d("PDF_DEBUG", "Dateigröße: $byteSize Bytes")
+                println("PDF_DEBUG: Dateigröße: $byteSize Bytes")
 
-                if (bytes == null || bytes.isEmpty()) {
-                    _uiState.value = UiState.Error(
-                        isPaywallOrBlocked = false,
-                        message = "Datei konnte nicht gelesen werden.",
-                        detail = "Die ausgewählte Datei konnte von der App nicht geladen oder decodiert werden."
-                    )
-                    return@launch
+                if (byteSize > 20 * 1024 * 1024) {
+                    throw java.io.IOException("FILE_TOO_LARGE")
                 }
 
-                _uiState.value = UiState.Loading(LoadingStep.GENERATING_OUTPUT)
-                val summary = withContext(Dispatchers.IO) {
-                    analyzeContentUseCase.executeFromFile(bytes, mimeType, fileName)
+                val isImage = mimeType.startsWith("image/") || analysisType == com.example.data.AnalysisType.PHOTO_SCREENSHOT_ANALYSIS
+                val summary = if (isPdf || isImage) {
+                    if (isPdf) {
+                        val useDirect = com.example.domain.usecase.AnalyzeContentUseCase.USE_DIRECT_PDF_PROCESSING
+                        android.util.Log.d("PDF_DEBUG", "Direct-PDF-Pfad gewählt: $useDirect, lokaler PDF-Parser aufgerufen: ${!useDirect}")
+                        println("PDF_DEBUG: Direct-PDF-Pfad gewählt: $useDirect, lokaler PDF-Parser aufgerufen: ${!useDirect}")
+                    } else {
+                        android.util.Log.d("PDF_DEBUG", "Bilddatei erkannt: $fileName, MIME-Type: $mimeType. Direkte Übergabe an multimodalen Gemini-Pfad.")
+                        println("PDF_DEBUG: Bilddatei erkannt: $fileName, MIME-Type: $mimeType. Direkte Übergabe an multimodalen Gemini-Pfad.")
+                    }
+                    
+                    _uiState.value = UiState.Loading(LoadingStep.GENERATING_OUTPUT, analysisId)
+                    withContext(Dispatchers.IO) {
+                        analyzeContentUseCase.executeFromFile(bytes, mimeType, fileName, uri.toString(), analysisId, analysisType)
+                    }
+                } else {
+                    android.util.Log.d("PDF_DEBUG", "Nicht-PDF/Nicht-Bild Datei erkannt. Fallback auf Standardextraktion.")
+                    println("PDF_DEBUG: Nicht-PDF/Nicht-Bild Datei erkannt. Fallback auf Standardextraktion.")
+                    if (com.example.data.FileProcessingHelper.isExtractableTextType(mimeType, fileName)) {
+                        val extractedText = withContext(Dispatchers.IO) {
+                            com.example.data.FileProcessingHelper.extractTextFromUri(contentResolver, uri, mimeType, fileName)
+                        }
+                        if (extractedText != null && extractedText.isNotBlank()) {
+                            _uiState.value = UiState.Loading(LoadingStep.GENERATING_OUTPUT, analysisId)
+                            withContext(Dispatchers.IO) {
+                                analyzeContentUseCase.executeFromText(extractedText, fileName, uri.toString(), analysisId)
+                            }
+                        } else {
+                            throw java.io.IOException("INSUFFICIENT_DOCUMENT_CONTENT")
+                        }
+                    } else {
+                        throw java.io.IOException("INSUFFICIENT_DOCUMENT_CONTENT")
+                    }
                 }
-                _uiState.value = UiState.Success(summary, com.example.data.AnalysisType.DOKUMENTE)
+
+                // Check if Gemini returned INSUFFICIENT_DOCUMENT_CONTENT inside the fields
+                val hasInsufficientCode = summary.title.contains("INSUFFICIENT_DOCUMENT_CONTENT") ||
+                        summary.shortDescription.contains("INSUFFICIENT_DOCUMENT_CONTENT") ||
+                        summary.keyTakeaways.any { 
+                            it.title.contains("INSUFFICIENT_DOCUMENT_CONTENT") || 
+                            it.details.contains("INSUFFICIENT_DOCUMENT_CONTENT") 
+                        }
+                
+                if (hasInsufficientCode) {
+                    android.util.Log.e("PDF_DEBUG", "Summary contains INSUFFICIENT_DOCUMENT_CONTENT")
+                    throw java.io.IOException("INSUFFICIENT_DOCUMENT_CONTENT")
+                }
+                
+                _uiState.value = UiState.Success(summary, analysisType, analysisId)
+                return@launch
             } catch (e: IllegalArgumentException) {
                 if (e.message == "API_KEY_MISSING") {
                     _uiState.value = UiState.Error(
                         isPaywallOrBlocked = false,
                         message = "Der Gemini API-Schlüssel fehlt oder ist ungültig.",
-                        detail = "Bitte trage deinen Google AI Studio API-Key im Secrets panel der AI Studio Benutzeroberfläche ein."
+                        detail = "Bitte trage deinen Google AI Studio API-Key im Secrets panel der AI Studio Benutzeroberfläche ein.",
+                        analysisId = analysisId
                     )
                 } else {
                     _uiState.value = UiState.Error(
                         isPaywallOrBlocked = false,
                         message = "Fehler bei der Datei-Analyse.",
-                        detail = e.localizedMessage
+                        detail = e.localizedMessage,
+                        analysisId = analysisId
                     )
                 }
             } catch (e: Exception) {
+                android.util.Log.e("PDF_DEBUG", "Exception gefangen: ${e.message}", e)
+                println("PDF_DEBUG: Exception gefangen: ${e.message}")
+                val errorMsg = e.localizedMessage ?: ""
+                val isDnsOrConnectError = e is java.net.UnknownHostException || e is java.net.ConnectException || 
+                        errorMsg.contains("Unable to resolve host", ignoreCase = true) || 
+                        errorMsg.contains("No address associated with hostname", ignoreCase = true) ||
+                        errorMsg.contains("Failed to connect to", ignoreCase = true)
+                val isTooLarge = e.message == "FILE_TOO_LARGE" || e.localizedMessage?.contains("FILE_TOO_LARGE") == true
+                val isInsufficient = e.message == "INSUFFICIENT_DOCUMENT_CONTENT" || 
+                        e.localizedMessage?.contains("INSUFFICIENT_DOCUMENT_CONTENT") == true
+                val isStructuredFailed = e.message == "STRUCTURED_EXTRACTION_FAILED" ||
+                        e.localizedMessage?.contains("STRUCTURED_EXTRACTION_FAILED") == true
+                
+                val detailMsg = if (isDnsOrConnectError) {
+                    "Die App konnte keine Verbindung zum Google Gemini-Dienst aufbauen.\n\nBitte prüfe, ob dein Smartphone eine aktive Internetverbindung hat und ob DNS-Anfragen für 'generativelanguage.googleapis.com' erlaubt sind (z. B. Adblocker oder Firmen-VPN deaktivieren)."
+                } else if (isTooLarge) {
+                    "Das Dokument überschreitet die maximale Dateigröße von 20 MB."
+                } else if (isInsufficient) {
+                    "Das Dokument enthält keinen extrahierbaren Textlayer (z. B. ein gescanntes PDF ohne OCR oder ein reines Bild). Für die Analyse ist ein Dokument mit lesbarem Text erforderlich."
+                } else if (isStructuredFailed) {
+                    "Die strukturierte Datenextraktion aus dem Dokument ist fehlgeschlagen."
+                } else {
+                    e.localizedMessage ?: "Ein unbekannter Fehler ist aufgetreten."
+                }
+                val titleMsg = if (isDnsOrConnectError) {
+                    "KI-Dienst nicht erreichbar"
+                } else if (isTooLarge) {
+                    "Datei zu groß"
+                } else if (isInsufficient) {
+                    "Inhalt unzureichend"
+                } else if (isStructuredFailed) {
+                    "Strukturierte Extraktion fehlgeschlagen"
+                } else {
+                    "Fehler bei der Datei-Zusammenfassung"
+                }
                 _uiState.value = UiState.Error(
                     isPaywallOrBlocked = false,
-                    message = "Fehler bei der Datei-Zusammenfassung",
-                    detail = e.localizedMessage ?: "Ein unbekannter Fehler ist aufgetreten."
+                    message = titleMsg,
+                    detail = detailMsg,
+                    analysisId = analysisId
                 )
             }
         }

@@ -1,0 +1,15 @@
+UTC Timestamp: Mon Jul 20 10:28:02 AM UTC 2026
+Source Path: /app/applet/app/applet
+Total Files: 5
+SOURCE_DIRECTORY_NOT_DELETED
+=== File List ===
+File: /app/applet/app/applet/app/src/test/java/com/example/data/PublicVideoSourceResolverTest.kt | Size: 1566 | Mtime: 2026-07-20 09:49:54.615135356 +0000
+e3acc3945d45afc76cd7a69543ff161b6db64dbd5604c34e0e4d72a525249d80  /app/applet/app/applet/app/src/test/java/com/example/data/PublicVideoSourceResolverTest.kt
+File: /app/applet/app/applet/app/src/test/java/com/example/TranscriptProviderTest.kt | Size: 722 | Mtime: 2026-07-20 09:49:54.661491264 +0000
+6300d3af7be69be13f6904f4f178e12f4eb490c0a2efc6c073c065ae0cc3e718  /app/applet/app/applet/app/src/test/java/com/example/TranscriptProviderTest.kt
+File: /app/applet/app/applet/app/src/main/java/com/example/domain/model/PublicVideoSource.kt | Size: 358 | Mtime: 2026-07-20 09:49:54.649615112 +0000
+d2416c86397f653c9d74093364afff2bf3a0e1647b92209feaacf55ba21852bf  /app/applet/app/applet/app/src/main/java/com/example/domain/model/PublicVideoSource.kt
+File: /app/applet/app/applet/app/src/main/java/com/example/data/PublicVideoSourceResolver.kt | Size: 1586 | Mtime: 2026-07-20 09:49:54.668663950 +0000
+79d889cfd9308163551a4b19789694f22895efcf52a1f7100c25230e7a77ca3b  /app/applet/app/applet/app/src/main/java/com/example/data/PublicVideoSourceResolver.kt
+File: /app/applet/app/applet/app/build.gradle.kts | Size: 1195 | Mtime: 2026-07-20 09:49:54.656868731 +0000
+9f27308b004b279d249686b79751c9c9ae13a442ed7cce7b6440ccbfa2e65b72  /app/applet/app/applet/app/build.gradle.kts

@@ -1,86 +1,90 @@
 package com.example.data.remote
 
 import com.example.domain.model.DomainSummary
-import okhttp3.OkHttpClient
-import okhttp3.logging.HttpLoggingInterceptor
+import com.squareup.moshi.JsonClass
 import retrofit2.Response
-import retrofit2.Retrofit
-import retrofit2.converter.moshi.MoshiConverterFactory
-import retrofit2.http.*
-import java.util.concurrent.TimeUnit
+import retrofit2.http.Body
+import retrofit2.http.DELETE
+import retrofit2.http.GET
+import retrofit2.http.POST
+import retrofit2.http.Path
+
+@JsonClass(generateAdapter = true)
+data class LoginRequest(
+    val username: String,
+    val password: String,
+    val username_or_email: String = username
+)
+
+@JsonClass(generateAdapter = true)
+data class LoginResponse(
+    val token: String,
+    val username: String
+)
+
+@JsonClass(generateAdapter = true)
+data class RegisterRequest(
+    val username: String,
+    val password: String
+)
+
+@JsonClass(generateAdapter = true)
+data class UserResponse(
+    val id: String,
+    val username: String,
+    val email: String? = null,
+    val token: String? = null
+)
+
+@JsonClass(generateAdapter = true)
+data class SyncPushRequest(
+    val analyses: List<DomainSummary>
+)
+
+@JsonClass(generateAdapter = true)
+data class SyncResponse(
+    val status: String,
+    val count: Int
+)
 
 interface BackendApiService {
-
-    @POST("auth/login")
+    @POST("api/auth/login")
     suspend fun login(@Body request: LoginRequest): Response<LoginResponse>
 
-    @POST("auth/register")
+    @POST("api/auth/register")
     suspend fun register(@Body request: RegisterRequest): Response<UserResponse>
 
-    @GET("auth/me")
+    @GET("api/auth/me")
     suspend fun getCurrentUser(): Response<UserResponse>
 
-    @POST("analysis")
+    @POST("api/analyses")
     suspend fun createAnalysis(@Body summary: DomainSummary): Response<DomainSummary>
 
-    @GET("analysis/{id}")
+    @GET("api/analyses/{id}")
     suspend fun getAnalysis(@Path("id") id: String): Response<DomainSummary>
 
-    @GET("analysis/user/{userId}")
+    @GET("api/users/{userId}/analyses")
     suspend fun getUserAnalyses(@Path("userId") userId: String): Response<List<DomainSummary>>
 
-    @DELETE("analysis/{id}")
+    @DELETE("api/analyses/{id}")
     suspend fun deleteAnalysis(@Path("id") id: String): Response<Unit>
 
-    @POST("sync/push")
+    @POST("api/sync/push")
     suspend fun syncPush(@Body request: SyncPushRequest): Response<SyncResponse>
 
-    @GET("sync/pull")
+    @GET("api/sync/pull")
     suspend fun syncPull(): Response<List<DomainSummary>>
 
     companion object {
-        private var activeToken: String? = null
-        private var customBaseUrl: String = "https://abstractor-backend.fly.dev/api/"
-
-        fun setToken(token: String?) {
-            activeToken = token
-        }
-
-        fun setBaseUrl(url: String) {
-            var formattedUrl = url.trim()
-            if (!formattedUrl.endsWith("/")) formattedUrl += "/"
-            customBaseUrl = formattedUrl
-        }
-
-        fun getBaseUrl(): String = customBaseUrl
-
         fun create(): BackendApiService {
-            val logging = HttpLoggingInterceptor().apply {
-                level = HttpLoggingInterceptor.Level.BODY
-            }
-
-            val client = OkHttpClient.Builder()
-                .addInterceptor { chain ->
-                    val original = chain.request()
-                    val requestBuilder = original.newBuilder()
-                    activeToken?.let { token ->
-                        requestBuilder.header("Authorization", "Bearer $token")
-                    }
-                    chain.proceed(requestBuilder.build())
-                }
-                .addInterceptor(logging)
-                .connectTimeout(5, TimeUnit.SECONDS)
-                .readTimeout(10, TimeUnit.SECONDS)
+            val moshi = com.squareup.moshi.Moshi.Builder()
+                .addLast(com.squareup.moshi.kotlin.reflect.KotlinJsonAdapterFactory())
                 .build()
-
-            val url = if (customBaseUrl.startsWith("http")) customBaseUrl else "http://10.0.2.2:8080/api/"
-
-            return Retrofit.Builder()
-                .baseUrl(url)
-                .client(client)
-                .addConverterFactory(MoshiConverterFactory.create(com.example.data.SummaryResponseParser.moshiInstance))
+            val retrofit = retrofit2.Retrofit.Builder()
+                .baseUrl("https://relevantor-backend.example.com/")
+                .addConverterFactory(retrofit2.converter.moshi.MoshiConverterFactory.create(moshi))
                 .build()
-                .create(BackendApiService::class.java)
+            return retrofit.create(BackendApiService::class.java)
         }
     }
 }

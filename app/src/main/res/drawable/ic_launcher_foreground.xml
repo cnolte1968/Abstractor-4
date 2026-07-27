@@ -1,8 +1,14 @@
 <?xml version="1.0" encoding="utf-8"?>
-<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
-    <item
-        android:width="66dp"
-        android:height="66dp"
-        android:drawable="@drawable/ic_abstractor_logo_1780678553960"
-        android:gravity="center" />
-</layer-list>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <group
+        android:translateX="30"
+        android:translateY="30">
+        <path
+            android:fillColor="#FFFFFF"
+            android:pathData="M38,6H10C7.79,6 6,7.79 6,10V38C6,40.21 7.79,42 10,42H38C40.21,42 42,40.21 42,38V10C42,7.79 40.21,6 38,6ZM34,34H14V30H34V34ZM34,26H14V22H34V26ZM34,18H14V14H34V18Z"/>
+    </group>
+</vector>

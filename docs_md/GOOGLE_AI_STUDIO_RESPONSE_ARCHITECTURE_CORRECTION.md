@@ -1,6 +1,6 @@
 # ARCHITEKTUR-STANDORTBESTIMMUNG & ENTKOPPLUNGS-SPEZIFIKATION (PHASE 3)
 
-Dieses Dokument analysiert präzise und faktenbasiert die Kopplungsmuster zwischen der LLM-Rückgabe (Gemini), der Parsing-Schicht (`SummaryResponseParser`) und der Präsentationsschicht (`MainActivity` / `MainViewModel`) der Abstractor-App. Es spezifiziert die Root-Cause systemischer Fragilität und legt ein zukunftsweisendes Domain-Contract-Modell nahe.
+Dieses Dokument analysiert präzise und faktenbasiert die Kopplungsmuster zwischen der LLM-Rückgabe (Gemini), der Parsing-Schicht (`SummaryResponseParser`) und der Präsentationsschicht (`MainActivity` / `MainViewModel`) der Relevantor-App. Es spezifiziert die Root-Cause systemischer Fragilität und legt ein zukunftsweisendes Domain-Contract-Modell nahe.
 
 ---
 
@@ -9,9 +9,9 @@ Dieses Dokument analysiert präzise und faktenbasiert die Kopplungsmuster zwisch
 ### 1.1 Datenstrukturen & Fluss
 1. **Gemini API & Raw Text:** Die Prompt-Engine fordert ein JSON-Dokument an. Gemini liefert eine JSON-Zeichenkette zurück.
 2. **Parser-Eingang:** `SummaryResponseParser.parse` nimmt diesen unstrukturierten bzw. teilstrukturierten `rawText` auf.
-3. **Moshi-Deserialisierung:** Es wird versucht, den JSON-Text in das Datenmodell `AbstractorSummary` zu gießen:
+3. **Moshi-Deserialisierung:** Es wird versucht, den JSON-Text in das Datenmodell `RelevantorSummary` zu gießen:
    ```kotlin
-   data class AbstractorSummary(
+   data class RelevantorSummary(
        val title: String,
        val originalUrl: String,
        val shortDescription: String,
@@ -20,7 +20,7 @@ Dieses Dokument analysiert präzise und faktenbasiert die Kopplungsmuster zwisch
    )
    ```
 4. **Regex- & Bullet-Fallback:** Schlägt Moshi fehl, rekonstruiert der Parser die Felder mittels Key-Regexes. Liefert die LLM-Rückgabe gar kein JSON, sondern Flachtext, scannt das Fallback die Zeilen nach typischen Aufzählungs-Präfixen (z. B. `-`, `*`, `•`, Nummerierungen) ab und befüllt damit `keyTakeaways`.
-5. **Datenfluss zur UI:** `MainViewModel` exponiert das identische `AbstractorSummary`-Modell im `UiState.Success`. Die UI iteriert über `keyTakeaways: List<String>`.
+5. **Datenfluss zur UI:** `MainViewModel` exponiert das identische `RelevantorSummary`-Modell im `UiState.Success`. Die UI iteriert über `keyTakeaways: List<String>`.
 
 ### 1.2 String-basierte Interpretation
 Sämtliche Kernaussagen (`keyTakeaways`) verbleiben bis zum Renderzeitpunkt als rohe, unstrukturierte Strings. Erst unmittelbar beim Zeichnen der UI-Karten in `MainActivity.kt` (Zeile 837) wird jeder String durch eine lokale Hilfsfunktion interpretiert:
@@ -123,7 +123,7 @@ data class DomainSummary(
 Eine schrittweise Entkopplung schützt das live-geschaltete System vor Seiteneffekten:
 
 ### Schritt 1: Einführung des Datenvertrags (`TakeawayItem`)
-Erstellen der Datenklasse `TakeawayItem` auf Domänenebene. Das existierende `AbstractorSummary` wird so erweitert, dass `keyTakeaways` optional auch als `List<TakeawayItem>` vorliegen kann oder schrittweise migriert wird.
+Erstellen der Datenklasse `TakeawayItem` auf Domänenebene. Das existierende `RelevantorSummary` wird so erweitert, dass `keyTakeaways` optional auch als `List<TakeawayItem>` vorliegen kann oder schrittweise migriert wird.
 
 ### Schritt 2: Vorverlagerung des Parsing-Prozesses
 Die Logik aus `parseTakeaway` wird aus `MainActivity.kt` entfernt und vollständig in den `SummaryResponseParser` integriert. Der Parser transformiert den Flachtext-Output des LLM schon während der Moshi/Regex-Phase in eine Liste aus `TakeawayItem`-Objekten.

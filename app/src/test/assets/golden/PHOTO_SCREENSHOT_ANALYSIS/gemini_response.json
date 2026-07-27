@@ -1,0 +1,16 @@
+{
+  "title": "Bildanalyse: Beispiel-Screenshot",
+  "original_url": "content://media/external/images/media/1",
+  "short_description": "Eine strukturierte Analyse eines Beispielscreenshots der Benutzeroberfläche.",
+  "key_takeaways": [
+    {
+      "title": "Visuelle Elemente",
+      "details": "Der Screenshot zeigt eine minimalistische Benutzeroberfläche mit dunklen Farbelementen."
+    },
+    {
+      "title": "Erkannte Textinhalte",
+      "details": "Auf der Oberseite des Bildes ist der Titel der Anwendung klar lesbar."
+    }
+  ],
+  "owner": "Android-System"
+}

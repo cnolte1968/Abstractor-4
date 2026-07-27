@@ -11,7 +11,7 @@ Dieser Bericht prüft und dokumentiert vollkommen objektiv, ohne Annahmen und au
 | **Dateierstellung** (`_function_prompt_template.md`) | **JA** | `create_file` lieferte: *"Successfully created file /app/src/main/assets/prompts/_function_prompt_template.md..."* | **OBSERVED** |
 | **Dateierstellung** (`_global_quality_rules.md`) | **JA** | Datei existiert physikalisch im Verzeichnis, wie durch Verzeichnisauflistung bestätigt. | **OBSERVED** |
 | **Verzeichnis auflisten** (`/app/src/main/assets/prompts`) | **JA** | `list_dir` lieferte die physikalische Liste aller 13 Dateien im Prompt-Verzeichnis. | **OBSERVED** |
-| **Root-Verzeichnis auflisten** (`/`) | **JA** | `list_dir` lieferte die Struktur inklusive `ABSTRACTOR_ARCHITECTURE.md`, `app`, `gradle`, etc. | **OBSERVED** |
+| **Root-Verzeichnis auflisten** (`/`) | **JA** | `list_dir` lieferte die Struktur inklusive `RELEVANTOR_ARCHITECTURE.md`, `app`, `gradle`, etc. | **OBSERVED** |
 | **Kotlin-Codebearbeitung** (`PromptLoader.kt`, `PromptEngine.kt`) | **JA** | Die Diff-Blöcke der Werkzeugrückmeldungen wurden vom System mitgeteilt; die nachfolgende Kompilierung bestätigte den Syntax-Check der Änderungen. | **OBSERVED** |
 | **Gradle Testlauf** (`gradle :app:testDebugUnitTest`) | **JA** | `shell_exec` meldete einen Verbindungsfehler (`URL_TIMEOUT` auf dem internen Control-Plane-Execposten). Dies beweist einen echten Netzwerk-/Prozessaufruf. | **OBSERVED** |
 | **Compiler-Ausführung** (`compile_applet`) | **JA** | `compile_applet` meldete: *"Build succeeded - the applet is compiled"* nach der Einbindung neuer APIs. | **OBSERVED** |
@@ -53,7 +53,7 @@ Im Rahmen der jüngsten Workspace-Interaktionen wurden folgende Werkzeuge mit ec
 ### A) Echte Systemoperation (Echte API-Aufrufe)
 Eine echte Systemoperation liegt vor, wenn das Sprachmodell eine strukturierte JSON-Schnittstelle (Tool-Call) bedient, die vom umgebenden Docker-Container/VM-Schnittstelle interpretiert und physikalisch als System-Call (z. B. POSIX `open`, `write`, `exec`) ausgeführt wird. Das Ergebnis wird dem Modell als neue Systemrolle zurückgespielt.
 
-* **Beispiel im Projekt:** Die Erstellung neuer Dokumentation, Änderungen am Kotlin-Code des Abstractor-Cores sowie der Compilerlauf sind echte physische Aktionen.
+* **Beispiel im Projekt:** Die Erstellung neuer Dokumentation, Änderungen am Kotlin-Code des Relevantor-Cores sowie der Compilerlauf sind echte physische Aktionen.
 
 ### B) Nur im Text beschriebene Operation (Simulation)
 Eine Simulation liegt vor, wenn das Sprachmodell im reinen Chat-Antworttext behauptet, es habe *"eine Datei editiert"*, ohne dass dem ein strukturierter JSON-Tool-Call vorausging. Dies ist eine reine "Halluzination" oder Behauptung, von der das tatsächliche Dateisystem unberührt bleibt.

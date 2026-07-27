@@ -1,0 +1,20 @@
+{
+  "title": "Fakt/Meinung: Immobilienmarkt",
+  "original_url": "https://immo-news.de/preisentwicklung",
+  "short_description": "Unterscheidung zwischen belegbaren Fakten und subjektiven Meinungen bezüglich der Immobilienpreisentwicklung.",
+  "key_takeaways": [
+    {
+      "title": "[F] Fakt: Preisanstieg um 5%",
+      "details": "Die Immobilienpreise sind im Jahr 2025 statistisch belegt um 5% gestiegen."
+    },
+    {
+      "title": "[M] Meinung: Optimaler Kaufzeitpunkt",
+      "details": "Die Einschätzung, dass jetzt der beste Zeitpunkt zum Kaufen sei, ist eine subjektive Meinung ohne Garantie."
+    },
+    {
+      "title": "[S] Spekulation: Zukünftige Entwicklung",
+      "details": "Es wird spekuliert, dass die Preise aufgrund veränderter Zinslagen im nächsten Jahr stagnieren könnten."
+    }
+  ],
+  "owner": "ImmobilienPortal"
+}

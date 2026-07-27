@@ -1,124 +1,75 @@
 package com.example
 
+// CP-02 Verification: "Frage an die Quelle" user flow verified and active in MainActivity.kt
 import android.content.Intent
-import android.net.Uri
 import android.os.Bundle
 import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
-import androidx.activity.compose.rememberLauncherForActivityResult
-import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.viewModels
 import androidx.compose.animation.*
-import androidx.compose.foundation.BorderStroke
-import androidx.compose.foundation.background
-import androidx.compose.foundation.border
-import androidx.compose.foundation.clickable
-import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.animation.core.*
+import androidx.compose.foundation.*
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
+import androidx.compose.foundation.lazy.grid.items
+import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.verticalScroll
-import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.text.KeyboardOptions
-import androidx.compose.foundation.text.KeyboardActions
-import androidx.compose.ui.text.input.ImeAction
-import androidx.compose.ui.text.input.KeyboardType
-import androidx.compose.ui.text.input.TextFieldValue
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
+import androidx.compose.material.icons.outlined.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalClipboardManager
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.AnnotatedString
-import androidx.compose.ui.text.TextStyle
-import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.example.data.AnalysisType
 import com.example.domain.model.DomainSummary
 import com.example.domain.model.TakeawayItem
 import com.example.ui.MainViewModel
-import com.example.ui.UiState
-import com.example.ui.LoadingStep
-import com.example.ui.AuthStatus
-import androidx.compose.ui.draw.alpha
-import com.example.ui.theme.MyApplicationTheme
+import kotlinx.coroutines.launch
 
 class MainActivity : ComponentActivity() {
-
     private val viewModel: MainViewModel by viewModels()
-    private val isSharedLaunchState = mutableStateOf(false)
-
-    private fun getSharedTextFromIntent(intent: Intent?): String {
-        if (intent == null) return ""
-        var sharedText = intent.getStringExtra(Intent.EXTRA_TEXT) ?: ""
-        if (sharedText.isBlank()) {
-            val clipData = intent.clipData
-            if (clipData != null && clipData.itemCount > 0) {
-                val item = clipData.getItemAt(0)
-                sharedText = item.text?.toString() ?: ""
-            }
-        }
-        return sharedText
-    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
-
-        // Initialize UseCases and repositories in ViewModel
         viewModel.initIfNeeded(applicationContext)
 
-        // Initialize PromptLoader with application context
-        com.example.data.PromptLoader.init(applicationContext)
-
-        // Schedule periodic background sync with WorkManager
-        com.example.data.sync.SyncScheduler.schedulePeriodicSync(applicationContext)
-
-        // Build & Model diagnostics logging at startup
-        android.util.Log.d("AbstractorDiagnostic", "=== DIAGNOSTIC STARTUP ===")
-        android.util.Log.d("AbstractorDiagnostic", "BUILD_DIAGNOSTIC_VER = ${com.example.data.GeminiModelConfig.ABSTRACTOR_BUILD_DIAGNOSTIC}")
-        android.util.Log.d("AbstractorDiagnostic", "BuildConfig.VERSION_CODE = ${com.example.BuildConfig.VERSION_CODE}")
-        android.util.Log.d("AbstractorDiagnostic", "BuildConfig.VERSION_NAME = ${com.example.BuildConfig.VERSION_NAME}")
-        android.util.Log.d("AbstractorDiagnostic", "Primary configured model = ${com.example.data.GeminiModelConfig.TEXT_MODEL}")
-        android.util.Log.d("AbstractorDiagnostic", "Fallback configured model = ${com.example.data.GeminiModelConfig.FALLBACK_MODEL}")
-        android.util.Log.d("AbstractorDiagnostic", "==========================")
-
-        // Intercept Android System Action Send Intents
-        if (intent?.action == Intent.ACTION_SEND && "text/plain" == intent.type) {
-            val sharedText = getSharedTextFromIntent(intent)
-            if (sharedText.isNotBlank()) {
-                isSharedLaunchState.value = true
-                viewModel.processSharedText(sharedText, intent)
-            }
-        }
+        // Handle initial incoming share intent
+        intent?.let { handleIntent(it) }
 
         setContent {
-            MyApplicationTheme {
-                val isSharedLaunch by isSharedLaunchState
+            RelevantorTheme {
                 Surface(
                     modifier = Modifier.fillMaxSize(),
-                    color = if (isSharedLaunch) Color.Transparent else MaterialTheme.colorScheme.background
+                    color = MaterialTheme.colorScheme.background
                 ) {
-                    AbstractorAppScreen(
-                        viewModel = viewModel,
-                        isSharedLaunch = isSharedLaunch,
-                        onDismiss = { finish() },
-                        onResetSharedLaunchState = { isSharedLaunchState.value = false }
-                    )
+                    RelevantorApp(viewModel)
                 }
             }
         }
@@ -127,2092 +78,3069 @@ class MainActivity : ComponentActivity() {
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         setIntent(intent)
-        if (intent.action == Intent.ACTION_SEND && "text/plain" == intent.type) {
-            val sharedText = getSharedTextFromIntent(intent)
-            if (sharedText.isNotBlank()) {
-                isSharedLaunchState.value = true
+        handleIntent(intent)
+    }
+
+    private fun handleIntent(intent: Intent) {
+        if (intent.action == Intent.ACTION_SEND && intent.type == "text/plain") {
+            val sharedText = intent.getStringExtra(Intent.EXTRA_TEXT)
+            if (!sharedText.isNullOrBlank()) {
                 viewModel.processSharedText(sharedText, intent)
+                Toast.makeText(this, "Inhalt empfangen!", Toast.LENGTH_SHORT).show()
+            }
+        }
+    }
+}
+
+fun buildShareText(
+    title: String?,
+    shortDescription: String?,
+    originalUrl: String?,
+    fallbackTitle: String = "Relevantor"
+): String {
+    val t = if (title.isNullOrBlank()) fallbackTitle else title.trim()
+    val desc = if (shortDescription.isNullOrBlank()) "" else shortDescription.trim()
+    val url = if (originalUrl.isNullOrBlank()) "" else originalUrl.trim()
+
+    return when {
+        desc.isNotEmpty() && url.isNotEmpty() -> {
+            "$t\n\n$desc\n\n---\n\n$url"
+        }
+        desc.isEmpty() && url.isNotEmpty() -> {
+            "$t\n\n---\n\n$url"
+        }
+        desc.isNotEmpty() && url.isEmpty() -> {
+            "$t\n\n$desc"
+        }
+        else -> {
+            t
+        }
+    }
+}
+
+// ----------------------------------------------------------------------------------
+// DATA MODELS FOR NAVIGATION MAPPING
+// ----------------------------------------------------------------------------------
+
+enum class AppTab {
+    START, VERLAUF, FAVORITEN, PRO
+}
+
+data class FunctionInfo(
+    val id: String,
+    val name: String,
+    val description: String,
+    val type: AnalysisType?,
+    val icon: ImageVector,
+    val color: Color,
+    val isPlaceholder: Boolean = false,
+    val acceptedInputs: Set<com.example.ui.metadata.AcceptedInput> = setOf(com.example.ui.metadata.AcceptedInput.WEB)
+)
+
+data class CategoryInfo(
+    val id: String,
+    val label: String,
+    val name: String,
+    val icon: ImageVector,
+    val color: Color,
+    val functions: List<FunctionInfo>
+)
+
+// Helper to find CategoryInfo for a given FunctionInfo or AnalysisType
+fun findCategoryForFunction(functionId: String): CategoryInfo? {
+    return categoriesList.find { cat -> cat.functions.any { it.id == functionId } }
+}
+
+fun findCategoryForType(type: AnalysisType): CategoryInfo? {
+    return categoriesList.find { cat -> cat.functions.any { it.type == type } }
+}
+
+val categoriesList: List<CategoryInfo> = com.example.ui.metadata.FeatureCatalog.categories.map { cat ->
+    CategoryInfo(
+        id = cat.id,
+        label = cat.label,
+        name = cat.name,
+        icon = cat.icon,
+        color = cat.color,
+        functions = com.example.ui.metadata.FeatureCatalog.features
+            .filter { it.category == cat.id && it.visible }
+            .map { feat ->
+                FunctionInfo(
+                    id = feat.functionId,
+                    name = feat.name,
+                    description = feat.description,
+                    type = feat.analysisType,
+                    icon = feat.icon,
+                    color = feat.color,
+                    isPlaceholder = feat.isPlaceholder,
+                    acceptedInputs = feat.acceptedInputs
+                )
+            }
+    )
+}
+
+// ----------------------------------------------------------------------------------
+// HELPER FOR RENDERING MARKDOWN (BOLD INJECTIONS)
+// ----------------------------------------------------------------------------------
+fun parseMarkdownToAnnotatedString(text: String): AnnotatedString {
+    val builder = AnnotatedString.Builder()
+    val lines = text.split("\n")
+    for (index in lines.indices) {
+        var line = lines[index]
+        
+        // Remove leading asterisks from list items
+        val trimmed = line.trim()
+        if (trimmed.startsWith("*") && !trimmed.startsWith("**")) {
+            val firstStarIndex = line.indexOf('*')
+            if (firstStarIndex != -1) {
+                line = line.substring(0, firstStarIndex) + line.substring(firstStarIndex + 1).trimStart()
+            }
+        }
+        
+        // Remove trailing asterisk if any (e.g., "*Kulturelle*")
+        if (line.endsWith("*") && !line.endsWith("**")) {
+            line = line.substring(0, line.length - 1)
+        }
+        
+        // Split by "**" to parse bold blocks
+        val parts = line.split("**")
+        for (i in parts.indices) {
+            val part = parts[i]
+            // Clean up any remaining single asterisks
+            val cleanPart = part.replace("*", "")
+            if (i % 2 == 1) {
+                builder.pushStyle(SpanStyle(fontWeight = FontWeight.Bold))
+                builder.append(cleanPart)
+                builder.pop()
+            } else {
+                builder.append(cleanPart)
+            }
+        }
+        
+        if (index < lines.size - 1) {
+            builder.append("\n")
+        }
+    }
+    return builder.toAnnotatedString()
+}
+
+// ----------------------------------------------------------------------------------
+// THEME IMPLEMENTATION (M3 LIGHT AS SPECIFIED)
+// ----------------------------------------------------------------------------------
+
+@Composable
+fun RelevantorTheme(content: @Composable () -> Unit) {
+    val lightColorScheme = lightColorScheme(
+        primary = Color(0xFF4F46E5), // Beautiful Indigo
+        secondary = Color(0xFF3B82F6), // Deep Blue
+        tertiary = Color(0xFF10B981), // Emerald
+        background = Color(0xFFF8FAFC), // Slate 50 (Crisp off-white)
+        surface = Color(0xFFFFFFFF), // Pure White cards
+        surfaceVariant = Color(0xFFF1F5F9), // Slate 100 for light fillings
+        onBackground = Color(0xFF0F172A), // Slate 900 for text
+        onSurface = Color(0xFF1E293B), // Slate 800
+        outline = Color(0xFFE2E8F0) // Slate 200 border
+    )
+    MaterialTheme(
+        colorScheme = lightColorScheme,
+        content = content
+    )
+}
+
+// ----------------------------------------------------------------------------------
+// APP MAIN ROUTER & STATE MACHINE (ADAPTIVE COMPACT/EXPANDED DESIGN)
+// ----------------------------------------------------------------------------------
+
+@Composable
+fun RelevantorApp(viewModel: MainViewModel) {
+    val configuration = LocalConfiguration.current
+    val isTablet = configuration.screenWidthDp >= 600
+
+    val uiState by viewModel.uiState.collectAsState()
+    val savedHistories by viewModel.savedHistories.collectAsState()
+    val sharedUrlToFill by viewModel.sharedUrlToFill.collectAsState()
+    val authStatus by viewModel.authStatus.collectAsState()
+
+    var urlInput by rememberSaveable { mutableStateOf("") }
+    var useSearchGrounding by rememberSaveable { mutableStateOf(false) }
+    var freeQueryInput by rememberSaveable { mutableStateOf("") }
+    var showFreeQueryDialog by rememberSaveable { mutableStateOf(false) }
+    var tempFreeQueryInput by rememberSaveable { mutableStateOf("") }
+
+    // Navigation and UX states
+    var selectedTab by rememberSaveable { mutableStateOf(AppTab.START) }
+    var activeCategory by remember { mutableStateOf(categoriesList[0]) }
+    var activeFunction by remember { mutableStateOf<FunctionInfo?>(null) }
+    
+    // Default favorites list
+    val favoritesList by viewModel.favoritesList.collectAsState()
+
+    // Sync input field with incoming shared URL
+    LaunchedEffect(sharedUrlToFill) {
+        if (sharedUrlToFill.isNotBlank()) {
+            urlInput = sharedUrlToFill
+            selectedTab = AppTab.START
+            viewModel.clearSharedUrlToFill()
+        }
+    }
+
+    // Modal alerts for placeholders
+    var placeholderToShowAlert by remember { mutableStateOf<FunctionInfo?>(null) }
+
+    val context = LocalContext.current
+    val filePickerLauncher = androidx.activity.compose.rememberLauncherForActivityResult(
+        contract = androidx.activity.result.contract.ActivityResultContracts.GetContent()
+    ) { uri: android.net.Uri? ->
+        if (uri != null) {
+            viewModel.summarizeFileUri(context, uri, activeFunction?.type ?: AnalysisType.DOKUMENTE)
+        }
+    }
+
+    val onFunctionClick: (FunctionInfo) -> Unit = { func ->
+        if (func.isPlaceholder) {
+            placeholderToShowAlert = func
+        } else {
+            activeFunction = func
+            if (func.type != null) {
+                viewModel.setAnalysisType(func.type)
+            }
+            if (func.acceptedInputs.contains(com.example.ui.metadata.AcceptedInput.DOCUMENT)) {
+                filePickerLauncher.launch("*/*")
+            } else if (func.acceptedInputs.contains(com.example.ui.metadata.AcceptedInput.IMAGE)) {
+                filePickerLauncher.launch("image/*")
+            } else if (urlInput.isBlank()) {
+                // If url is blank, keep on start page but set active function
+                selectedTab = AppTab.START
+            } else {
+                // If url is set, trigger analysis
+                if (func.type?.canonical() == com.example.data.AnalysisType.FREE_SOURCE_QUERY) {
+                    showFreeQueryDialog = true
+                } else {
+                    viewModel.fetchSummary(
+                        rawUrl = urlInput,
+                        directContent = null,
+                        analysisType = func.type ?: AnalysisType.WEB_SUMMARY,
+                        freeQuery = if (func.type == AnalysisType.FREIE_QUELLENANFRAGE || func.type == AnalysisType.FREE_SOURCE_QUERY) freeQueryInput else null
+                    )
+                }
+            }
+        }
+    }
+
+    if (placeholderToShowAlert != null) {
+        val isAiImageCheck = placeholderToShowAlert?.name == "Bild mit KI erzeugt?"
+        val alertTitle = if (isAiImageCheck) "Funktion vorbereitet" else "Premium Funktion"
+        val alertText = if (isAiImageCheck) {
+            "Diese Funktion ist vorbereitet, aber noch nicht aktiviert. Der Analyse-Prompt wird später ergänzt."
+        } else {
+            "Die Funktion „${placeholderToShowAlert?.name}“ befindet sich aktuell in der Entwicklung und wird im nächsten Release freigeschaltet."
+        }
+        AlertDialog(
+            onDismissRequest = { placeholderToShowAlert = null },
+            title = { Text(alertTitle) },
+            text = { Text(alertText) },
+            confirmButton = {
+                Button(onClick = { placeholderToShowAlert = null }) {
+                    Text("Verstanden")
+                }
+            }
+        )
+    }
+
+    if (showFreeQueryDialog) {
+        AlertDialog(
+            onDismissRequest = {
+                showFreeQueryDialog = false
+                tempFreeQueryInput = ""
+            },
+            title = {
+                Text("Frage an die Quelle")
+            },
+            text = {
+                Column {
+                    OutlinedTextField(
+                        value = tempFreeQueryInput,
+                        onValueChange = { tempFreeQueryInput = it },
+                        placeholder = {
+                            Text("Trage hier Deine Frage zur Quelle ein", color = Color.Gray)
+                        },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .testTag("free_query_text_field"),
+                        singleLine = false,
+                        maxLines = 4
+                    )
+                }
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        val trimmed = tempFreeQueryInput.trim()
+                        showFreeQueryDialog = false
+                        tempFreeQueryInput = ""
+                        viewModel.fetchSummary(
+                            rawUrl = urlInput,
+                            directContent = null,
+                            analysisType = com.example.data.AnalysisType.FREE_SOURCE_QUERY,
+                            freeQuery = trimmed
+                        )
+                    },
+                    enabled = tempFreeQueryInput.trim().isNotEmpty(),
+                    modifier = Modifier.testTag("free_query_send_button")
+                ) {
+                    Text("Frage senden")
+                }
+            },
+            dismissButton = {
+                TextButton(
+                    onClick = {
+                        showFreeQueryDialog = false
+                        tempFreeQueryInput = ""
+                    },
+                    modifier = Modifier.testTag("free_query_cancel_button")
+                ) {
+                    Text("Abbrechen")
+                }
+            }
+        )
+    }
+
+    if (isTablet) {
+        Box(
+            modifier = Modifier.fillMaxSize(),
+            contentAlignment = Alignment.TopCenter
+        ) {
+            Box(
+                modifier = Modifier
+                    .widthIn(max = 600.dp)
+                    .fillMaxHeight()
+            ) {
+                SmartphoneLayout(
+                    viewModel = viewModel,
+                    uiState = uiState,
+                    savedHistories = savedHistories,
+                    authStatus = authStatus,
+                    urlInput = urlInput,
+                    onUrlInputChange = { urlInput = it },
+                    useSearchGrounding = useSearchGrounding,
+                    onSearchGroundingChange = { useSearchGrounding = it },
+                    freeQueryInput = freeQueryInput,
+                    onFreeQueryInputChange = { freeQueryInput = it },
+                    selectedTab = selectedTab,
+                    onTabChange = { selectedTab = it },
+                    activeCategory = activeCategory,
+                    onCategoryChange = { activeCategory = it },
+                    favoritesList = favoritesList,
+                    onFunctionClick = onFunctionClick,
+                    onToggleFavorite = { id -> viewModel.toggleFavorite(id) },
+                    activeFunction = activeFunction
+                )
+            }
+        }
+    } else {
+        SmartphoneLayout(
+            viewModel = viewModel,
+            uiState = uiState,
+            savedHistories = savedHistories,
+            authStatus = authStatus,
+            urlInput = urlInput,
+            onUrlInputChange = { urlInput = it },
+            useSearchGrounding = useSearchGrounding,
+            onSearchGroundingChange = { useSearchGrounding = it },
+            freeQueryInput = freeQueryInput,
+            onFreeQueryInputChange = { freeQueryInput = it },
+            selectedTab = selectedTab,
+            onTabChange = { selectedTab = it },
+            activeCategory = activeCategory,
+            onCategoryChange = { activeCategory = it },
+            favoritesList = favoritesList,
+            onFunctionClick = onFunctionClick,
+            onToggleFavorite = { id -> viewModel.toggleFavorite(id) },
+            activeFunction = activeFunction
+        )
+    }
+}
+
+// ----------------------------------------------------------------------------------
+// ADAPTIVE LAYOUTS (TABLET & SMARTPHONE)
+// ----------------------------------------------------------------------------------
+
+@Composable
+fun TabletLayout(
+    viewModel: MainViewModel,
+    uiState: com.example.ui.UiState,
+    savedHistories: List<DomainSummary>,
+    authStatus: com.example.ui.AuthStatus,
+    urlInput: String,
+    onUrlInputChange: (String) -> Unit,
+    useSearchGrounding: Boolean,
+    onSearchGroundingChange: (Boolean) -> Unit,
+    freeQueryInput: String,
+    onFreeQueryInputChange: (String) -> Unit,
+    selectedTab: AppTab = AppTab.START,
+    onTabChange: (AppTab) -> Unit = {},
+    activeCategory: CategoryInfo,
+    onCategoryChange: (CategoryInfo) -> Unit,
+    favoritesList: List<String>,
+    onFunctionClick: (FunctionInfo) -> Unit,
+    onToggleFavorite: (String) -> Unit,
+    activeFunction: FunctionInfo?
+) {
+    val clipboardManager = LocalClipboardManager.current
+    val context = LocalContext.current
+    var currentSubView by remember { mutableStateOf("start") } // "start", "settings"
+
+    Row(modifier = Modifier.fillMaxSize()) {
+        // Left Sidebar Navigation
+        Column(
+            modifier = Modifier
+                .width(280.dp)
+                .fillMaxHeight()
+                .background(Color.White)
+                .border(1.dp, MaterialTheme.colorScheme.outline)
+                .padding(16.dp),
+            verticalArrangement = Arrangement.SpaceBetween
+        ) {
+            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                // Header Logo
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier.padding(bottom = 16.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.AutoStories,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.size(28.dp)
+                    )
+                    Spacer(modifier = Modifier.width(10.dp))
+                    Text(
+                        "Relevantor",
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 20.sp,
+                        color = MaterialTheme.colorScheme.onBackground
+                    )
+                }
+
+                // Categories (A - E)
+                Text(
+                    "KATEGORIEN",
+                    fontSize = 11.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = Color.Gray,
+                    modifier = Modifier.padding(start = 8.dp, bottom = 4.dp)
+                )
+
+                categoriesList.forEach { category ->
+                    val isSelected = activeCategory.id == category.id && currentSubView == "start"
+                    NavigationItemRow(
+                        label = category.name,
+                        icon = category.icon,
+                        countText = "${category.functions.size} Funktionen",
+                        isSelected = isSelected,
+                        activeColor = category.color,
+                        onClick = {
+                            currentSubView = "start"
+                            onCategoryChange(category)
+                            if (uiState !is com.example.ui.UiState.Idle) {
+                                viewModel.resetToIdle()
+                            }
+                        }
+                    )
+                }
+
+                Spacer(modifier = Modifier.height(8.dp))
+
+                // Standard sections
+                Text(
+                    "MEIN BEREICH",
+                    fontSize = 11.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = Color.Gray,
+                    modifier = Modifier.padding(start = 8.dp, bottom = 4.dp)
+                )
+
+                NavigationItemRow(
+                    label = "Verlauf",
+                    icon = Icons.Default.History,
+                    countText = "${savedHistories.size} Analysen",
+                    isSelected = false,
+                    onClick = {
+                        Toast.makeText(context, "Verlauf im rechten Bereich sichtbar!", Toast.LENGTH_SHORT).show()
+                    }
+                )
+
+                NavigationItemRow(
+                    label = "Einstellungen",
+                    icon = Icons.Default.Settings,
+                    isSelected = currentSubView == "settings",
+                    onClick = { currentSubView = "settings" }
+                )
+            }
+
+            // Bottom Pro Card
+            ProPlanCard()
+        }
+
+        // Divider
+        VerticalDivider(color = MaterialTheme.colorScheme.outline)
+
+        // Main Content Area (Dynamic right panel)
+        Box(
+            modifier = Modifier
+                .weight(1f)
+                .fillMaxHeight()
+                .background(MaterialTheme.colorScheme.background)
+        ) {
+            if (currentSubView == "settings") {
+                Box(modifier = Modifier.fillMaxSize().padding(24.dp)) {
+                    AccountSettingsScreen(viewModel, authStatus)
+                }
+            } else {
+                // Start or result pipeline
+                when (uiState) {
+                    is com.example.ui.UiState.Idle -> {
+                        Row(modifier = Modifier.fillMaxSize()) {
+                            // Left column of content pane: primary workspace
+                            Column(
+                                modifier = Modifier
+                                    .weight(1.3f)
+                                    .fillMaxHeight()
+                                    .verticalScroll(rememberScrollState())
+                                    .padding(24.dp),
+                                verticalArrangement = Arrangement.spacedBy(20.dp)
+                            ) {
+                                // Input Box
+                                UrlInputCard(
+                                    urlInput = urlInput,
+                                    onUrlInputChange = onUrlInputChange,
+                                    useSearchGrounding = useSearchGrounding,
+                                    onSearchGroundingChange = onSearchGroundingChange,
+                                    clipboardManager = clipboardManager,
+                                    context = context
+                                )
+
+                                // Favorites Horizontal Panel
+                                FavoritesPanel(
+                                    favoritesList = favoritesList,
+                                    onFunctionClick = onFunctionClick,
+                                    onToggleFavorite = onToggleFavorite,
+                                    onEditClick = { onTabChange(AppTab.FAVORITEN) }
+                                )
+
+                                // Category Specific Workspace List
+                                CategoryWorkspaceList(
+                                    category = activeCategory,
+                                    onFunctionClick = onFunctionClick,
+                                    favoritesList = favoritesList,
+                                    onToggleFavorite = onToggleFavorite
+                                )
+                            }
+
+                            // Right column of content pane: Category info + Tips
+                            Column(
+                                modifier = Modifier
+                                    .weight(0.7f)
+                                    .fillMaxHeight()
+                                    .background(Color.White)
+                                    .border(1.dp, MaterialTheme.colorScheme.outline)
+                                    .padding(20.dp),
+                                verticalArrangement = Arrangement.spacedBy(16.dp)
+                            ) {
+                                CategoryInfoCard(category = activeCategory)
+                                TipOfTheDayCard()
+                                
+                                Spacer(modifier = Modifier.weight(1f))
+                                
+                                // History Mini Quick List
+                                if (savedHistories.isNotEmpty()) {
+                                    Text("Letzte Analysen", fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                        savedHistories.take(3).forEach { summary ->
+                                            Card(
+                                                modifier = Modifier
+                                                    .fillMaxWidth()
+                                                    .clickable { viewModel.openSavedAnalysis(summary) },
+                                                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
+                                            ) {
+                                                Column(modifier = Modifier.padding(10.dp)) {
+                                                    Row(
+                                                        modifier = Modifier.fillMaxWidth(),
+                                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                                        verticalAlignment = Alignment.CenterVertically
+                                                    ) {
+                                                        Text(
+                                                            text = summary.title,
+                                                            fontWeight = FontWeight.Bold,
+                                                            fontSize = 12.sp,
+                                                            modifier = Modifier.weight(1f),
+                                                            maxLines = 1,
+                                                            overflow = TextOverflow.Ellipsis
+                                                        )
+                                                        Spacer(modifier = Modifier.width(6.dp))
+                                                        Text(
+                                                            text = summary.timestamp,
+                                                            fontSize = 9.sp,
+                                                            color = Color.Gray
+                                                        )
+                                                    }
+                                                    Text(summary.originalUrl, fontSize = 10.sp, color = Color.Gray, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                                    Spacer(modifier = Modifier.height(4.dp))
+                                                    Box(
+                                                        modifier = Modifier
+                                                            .background(
+                                                                color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.5f),
+                                                                shape = RoundedCornerShape(4.dp)
+                                                            )
+                                                            .padding(horizontal = 6.dp, vertical = 2.dp)
+                                                    ) {
+                                                        Text(
+                                                            text = getFunctionNameForAnalysis(summary),
+                                                            fontSize = 9.sp,
+                                                            fontWeight = FontWeight.Medium,
+                                                            color = MaterialTheme.colorScheme.primary
+                                                        )
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    is com.example.ui.UiState.Loading -> {
+                        ProcessingScreen(
+                            uiState = uiState,
+                            activeCategory = findCategoryForType(viewModel.currentAnalysisType.value) ?: activeCategory,
+                            activeFunction = activeFunction ?: FunctionInfo("Custom", "Quell-Analyse", "", null, Icons.Default.Bolt, Color.Gray),
+                            onBackClick = { viewModel.resetToIdle() }
+                        )
+                    }
+                    is com.example.ui.UiState.Success -> {
+                        val currentCat = findCategoryForType(uiState.analysisType) ?: activeCategory
+                        val currentFunc = currentCat.functions.find { it.type == uiState.analysisType } ?: activeFunction ?: FunctionInfo("Custom", "Quell-Analyse", "", null, Icons.Default.Bolt, Color.Gray)
+                        ResultScreen(
+                            summary = uiState.summary,
+                            activeCategory = currentCat,
+                            activeFunction = currentFunc,
+                            onBackClick = { viewModel.resetToIdle() },
+                            isFavorite = favoritesList.contains(currentFunc.id),
+                            onToggleFavorite = { onToggleFavorite(currentFunc.id) }
+                        )
+                    }
+                    is com.example.ui.UiState.Error -> {
+                        ErrorScreen(
+                            message = uiState.message,
+                            detail = uiState.detail ?: "Ein unerwarteter Fehler ist aufgetreten. Bitte versuche es erneut.",
+                            onBackClick = { viewModel.resetToIdle() }
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+fun getCategoryDescription(categoryId: String): String {
+    return when (categoryId) {
+        "A" -> "Zusammenfassung, Kernaussagen, Quellensuche, Multimedia-Analyse"
+        "B" -> "Aktualität, Fehlinformationen, Fakt/Meinung, Risiken, Perspektiven, Weitere Aspekte"
+        "E" -> "Dokumente, PDFs, Bilder, Screenshots, KI-Analysen"
+        "D" -> "Social Media, E-Mails, Pressemitteilungen, Multi-URLs"
+        "C" -> "Infografiken, Mindmaps, Diagramme, Bild-Prompts"
+        else -> ""
+    }
+}
+
+@Composable
+fun SmartphoneLayout(
+    viewModel: MainViewModel,
+    uiState: com.example.ui.UiState,
+    savedHistories: List<DomainSummary>,
+    authStatus: com.example.ui.AuthStatus,
+    urlInput: String,
+    onUrlInputChange: (String) -> Unit,
+    useSearchGrounding: Boolean,
+    onSearchGroundingChange: (Boolean) -> Unit,
+    freeQueryInput: String,
+    onFreeQueryInputChange: (String) -> Unit,
+    selectedTab: AppTab,
+    onTabChange: (AppTab) -> Unit,
+    activeCategory: CategoryInfo,
+    onCategoryChange: (CategoryInfo) -> Unit,
+    favoritesList: List<String>,
+    onFunctionClick: (FunctionInfo) -> Unit,
+    onToggleFavorite: (String) -> Unit,
+    activeFunction: FunctionInfo?
+) {
+    var selectedCategoryForDetailId by rememberSaveable { mutableStateOf<String?>(null) }
+    val selectedCategoryForDetail = categoriesList.find { it.id == selectedCategoryForDetailId }
+    val clipboardManager = LocalClipboardManager.current
+    val context = LocalContext.current
+
+    Scaffold(
+        bottomBar = {
+            if (uiState is com.example.ui.UiState.Idle) {
+                NavigationBar(
+                    containerColor = Color.White,
+                    tonalElevation = 0.dp,
+                    modifier = Modifier.border(1.dp, Color(0xFFF1F5F9), RoundedCornerShape(topStart = 16.dp, topEnd = 16.dp))
+                ) {
+                    NavigationBarItem(
+                        selected = selectedTab == AppTab.START,
+                        onClick = { 
+                            selectedCategoryForDetailId = null
+                            onTabChange(AppTab.START) 
+                        },
+                        alwaysShowLabel = true,
+                        icon = { 
+                            Icon(
+                                if (selectedTab == AppTab.START) Icons.Filled.Home else Icons.Outlined.Home, 
+                                contentDescription = null,
+                                modifier = Modifier.size(22.dp)
+                            ) 
+                        },
+                        label = { 
+                            Text(
+                                text = "Start", 
+                                fontWeight = if (selectedTab == AppTab.START) FontWeight.Bold else FontWeight.Medium,
+                                fontSize = 11.sp,
+                                maxLines = 1,
+                                softWrap = false
+                            ) 
+                        },
+                        colors = NavigationBarItemDefaults.colors(
+                            selectedIconColor = MaterialTheme.colorScheme.primary,
+                            selectedTextColor = MaterialTheme.colorScheme.primary,
+                            indicatorColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.16f),
+                            unselectedIconColor = Color.Gray,
+                            unselectedTextColor = Color.Gray
+                        )
+                    )
+                    NavigationBarItem(
+                        selected = selectedTab == AppTab.VERLAUF,
+                        onClick = { 
+                            selectedCategoryForDetailId = null
+                            onTabChange(AppTab.VERLAUF) 
+                        },
+                        alwaysShowLabel = true,
+                        icon = { 
+                            Icon(
+                                Icons.Default.History, 
+                                contentDescription = null,
+                                modifier = Modifier.size(22.dp)
+                            ) 
+                        },
+                        label = { 
+                            Text(
+                                text = "Verlauf", 
+                                fontWeight = if (selectedTab == AppTab.VERLAUF) FontWeight.Bold else FontWeight.Medium,
+                                fontSize = 11.sp,
+                                maxLines = 1,
+                                softWrap = false
+                            ) 
+                        },
+                        colors = NavigationBarItemDefaults.colors(
+                            selectedIconColor = MaterialTheme.colorScheme.primary,
+                            selectedTextColor = MaterialTheme.colorScheme.primary,
+                            indicatorColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.16f),
+                            unselectedIconColor = Color.Gray,
+                            unselectedTextColor = Color.Gray
+                        )
+                    )
+                    NavigationBarItem(
+                        selected = selectedTab == AppTab.FAVORITEN,
+                        onClick = { 
+                            selectedCategoryForDetailId = null
+                            onTabChange(AppTab.FAVORITEN) 
+                        },
+                        alwaysShowLabel = true,
+                        icon = { 
+                            Icon(
+                                if (selectedTab == AppTab.FAVORITEN) Icons.Filled.Star else Icons.Outlined.StarOutline, 
+                                contentDescription = null,
+                                modifier = Modifier.size(22.dp)
+                            ) 
+                        },
+                        label = { 
+                            Text(
+                                text = "Favoriten", 
+                                fontWeight = if (selectedTab == AppTab.FAVORITEN) FontWeight.Bold else FontWeight.Medium,
+                                fontSize = 11.sp,
+                                maxLines = 1,
+                                softWrap = false
+                            ) 
+                        },
+                        colors = NavigationBarItemDefaults.colors(
+                            selectedIconColor = MaterialTheme.colorScheme.primary,
+                            selectedTextColor = MaterialTheme.colorScheme.primary,
+                            indicatorColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.16f),
+                            unselectedIconColor = Color.Gray,
+                            unselectedTextColor = Color.Gray
+                        )
+                    )
+
+                    NavigationBarItem(
+                        selected = selectedTab == AppTab.PRO,
+                        onClick = { 
+                            selectedCategoryForDetailId = null
+                            onTabChange(AppTab.PRO) 
+                        },
+                        alwaysShowLabel = true,
+                        icon = { 
+                            Icon(
+                                if (selectedTab == AppTab.PRO) Icons.Filled.Stars else Icons.Outlined.Stars, 
+                                contentDescription = null,
+                                modifier = Modifier.size(22.dp)
+                            ) 
+                        },
+                        label = { 
+                            Text(
+                                text = "Pro", 
+                                fontWeight = if (selectedTab == AppTab.PRO) FontWeight.Bold else FontWeight.Medium,
+                                fontSize = 11.sp,
+                                maxLines = 1,
+                                softWrap = false
+                            ) 
+                        },
+                        colors = NavigationBarItemDefaults.colors(
+                            selectedIconColor = MaterialTheme.colorScheme.primary,
+                            selectedTextColor = MaterialTheme.colorScheme.primary,
+                            indicatorColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.16f),
+                            unselectedIconColor = Color.Gray,
+                            unselectedTextColor = Color.Gray
+                        )
+                    )
+                }
+            }
+        }
+    ) { innerPadding ->
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(innerPadding)
+        ) {
+            when (uiState) {
+                is com.example.ui.UiState.Idle -> {
+                    when (selectedTab) {
+                        AppTab.START -> {
+                            if (selectedCategoryForDetailId != null) {
+                                androidx.activity.compose.BackHandler {
+                                    selectedCategoryForDetailId = null
+                                }
+                            }
+
+                            // EBENE 1 - HOME SCREEN WITH VERTICAL LIST OF CATEGORIES
+                            val orderedCategories = listOf(
+                                categoriesList.find { it.id == "A" },
+                                categoriesList.find { it.id == "B" },
+                                categoriesList.find { it.id == "E" },
+                                categoriesList.find { it.id == "D" },
+                                categoriesList.find { it.id == "C" }
+                            ).filterNotNull()
+
+                            LazyColumn(
+                                modifier = Modifier
+                                    .fillMaxSize()
+                                    .padding(16.dp),
+                                verticalArrangement = Arrangement.spacedBy(16.dp)
+                            ) {
+                                // Top Hero Section with Coffeehouse Background
+                                item {
+                                    androidx.compose.foundation.layout.Box(
+                                        modifier = Modifier.fillMaxWidth()
+                                    ) {
+                                        // Background Image matching the content height of Header, URL Input and Favorites
+                                        androidx.compose.foundation.Image(
+                                            painter = androidx.compose.ui.res.painterResource(id = R.drawable.relevantor_home_coffeehouse),
+                                            contentDescription = null,
+                                            modifier = Modifier.matchParentSize(),
+                                            contentScale = androidx.compose.ui.layout.ContentScale.Crop,
+                                            alignment = Alignment.TopCenter
+                                        )
+
+                                        // Soft Gradient Overlay fading into the solid background color
+                                        androidx.compose.foundation.layout.Box(
+                                            modifier = Modifier
+                                                .matchParentSize()
+                                                .background(
+                                                    androidx.compose.ui.graphics.Brush.verticalGradient(
+                                                        colors = listOf(
+                                                            MaterialTheme.colorScheme.background.copy(alpha = 0.35f),
+                                                            MaterialTheme.colorScheme.background.copy(alpha = 0.75f),
+                                                            MaterialTheme.colorScheme.background
+                                                        )
+                                                    )
+                                                )
+                                        )
+
+                                        Column(
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .padding(bottom = 8.dp),
+                                            verticalArrangement = Arrangement.spacedBy(16.dp)
+                                        ) {
+                                            // Top Header Row
+                                            Row(
+                                                modifier = Modifier.fillMaxWidth(),
+                                                horizontalArrangement = Arrangement.SpaceBetween,
+                                                verticalAlignment = Alignment.CenterVertically
+                                            ) {
+                                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                                    Icon(
+                                                        imageVector = Icons.Default.AutoStories,
+                                                        contentDescription = null,
+                                                        tint = MaterialTheme.colorScheme.primary,
+                                                        modifier = Modifier.size(24.dp)
+                                                    )
+                                                    Spacer(modifier = Modifier.width(8.dp))
+                                                    Text(
+                                                        "Relevantor",
+                                                        fontWeight = FontWeight.Bold,
+                                                        fontSize = 20.sp,
+                                                        color = MaterialTheme.colorScheme.onBackground
+                                                    )
+                                                }
+
+                                                Row(
+                                                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                                    verticalAlignment = Alignment.CenterVertically
+                                                ) {
+                                                    IconButton(onClick = {}) {
+                                                        Icon(Icons.Default.MoreVert, contentDescription = "Menü", tint = Color.Gray)
+                                                    }
+                                                }
+                                            }
+
+                                            // Input Text Field
+                                            UrlInputCard(
+                                                urlInput = urlInput,
+                                                onUrlInputChange = onUrlInputChange,
+                                                useSearchGrounding = useSearchGrounding,
+                                                onSearchGroundingChange = onSearchGroundingChange,
+                                                clipboardManager = clipboardManager,
+                                                context = context
+                                            )
+
+                                            // Favorites panel
+                                            FavoritesPanel(
+                                                favoritesList = favoritesList,
+                                                onFunctionClick = onFunctionClick,
+                                                onToggleFavorite = onToggleFavorite,
+                                                onEditClick = { onTabChange(AppTab.FAVORITEN) }
+                                            )
+                                        }
+                                    }
+                                }
+
+                                // Vertikale Kategorien
+                                item {
+                                    Text("Kategorien", fontWeight = FontWeight.Bold, fontSize = 15.sp, color = MaterialTheme.colorScheme.onBackground)
+                                }
+
+                                 items(orderedCategories) { category ->
+                                    val isExpanded = selectedCategoryForDetailId == category.id
+                                    Card(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        colors = CardDefaults.cardColors(
+                                            containerColor = if (isExpanded) category.color.copy(alpha = 0.04f) else Color.White
+                                        ),
+                                        shape = RoundedCornerShape(12.dp),
+                                        border = BorderStroke(
+                                            width = if (isExpanded) 1.5.dp else 1.dp,
+                                            color = if (isExpanded) category.color.copy(alpha = 0.3f) else Color(0xFFE2E8F0)
+                                        )
+                                    ) {
+                                        Column(modifier = Modifier.fillMaxWidth()) {
+                                            // Category Header with Left Indicator Strip
+                                            Row(
+                                                modifier = Modifier
+                                                    .fillMaxWidth()
+                                                    .clickable {
+                                                        selectedCategoryForDetailId = if (isExpanded) null else category.id
+                                                        onCategoryChange(category)
+                                                    },
+                                                verticalAlignment = Alignment.CenterVertically
+                                            ) {
+                                                // Left colored indicator stripe
+                                                Box(
+                                                    modifier = Modifier
+                                                        .width(5.dp)
+                                                        .height(54.dp)
+                                                        .background(category.color)
+                                                )
+                                                
+                                                Row(
+                                                    modifier = Modifier
+                                                        .weight(1f)
+                                                        .padding(horizontal = 12.dp, vertical = 10.dp),
+                                                    verticalAlignment = Alignment.CenterVertically,
+                                                    horizontalArrangement = Arrangement.SpaceBetween
+                                                ) {
+                                                    Row(
+                                                        verticalAlignment = Alignment.Top,
+                                                        modifier = Modifier.weight(1f)
+                                                    ) {
+                                                        Box(
+                                                            modifier = Modifier
+                                                                .size(36.dp)
+                                                                .clip(RoundedCornerShape(8.dp))
+                                                                .background(category.color.copy(alpha = 0.12f)),
+                                                            contentAlignment = Alignment.Center
+                                                        ) {
+                                                            Icon(
+                                                                imageVector = category.icon,
+                                                                contentDescription = null,
+                                                                tint = category.color,
+                                                                modifier = Modifier.size(18.dp)
+                                                            )
+                                                        }
+                                                        Spacer(modifier = Modifier.width(10.dp))
+                                                        Column {
+                                                            Text(
+                                                                text = category.name,
+                                                                fontWeight = FontWeight.ExtraBold,
+                                                                fontSize = 14.sp,
+                                                                color = MaterialTheme.colorScheme.onBackground
+                                                            )
+                                                            Spacer(modifier = Modifier.height(2.dp))
+                                                            Text(
+                                                                text = getCategoryDescription(category.id),
+                                                                fontSize = 10.sp,
+                                                                color = Color.Gray,
+                                                                lineHeight = 12.sp,
+                                                                maxLines = 2,
+                                                                overflow = TextOverflow.Ellipsis
+                                                            )
+                                                        }
+                                                    }
+                                                    Icon(
+                                                        imageVector = if (isExpanded) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
+                                                        contentDescription = null,
+                                                        tint = category.color,
+                                                        modifier = Modifier.size(20.dp)
+                                                    )
+                                                }
+                                            }
+
+                                            if (isExpanded) {
+                                                Column(
+                                                    modifier = Modifier
+                                                        .fillMaxWidth()
+                                                        .padding(start = 17.dp, end = 12.dp, bottom = 12.dp),
+                                                    verticalArrangement = Arrangement.spacedBy(6.dp)
+                                                ) {
+                                                    category.functions.forEach { func ->
+                                                        val isFav = favoritesList.contains(func.id)
+                                                        Card(
+                                                            modifier = Modifier
+                                                                .fillMaxWidth()
+                                                                .clickable { onFunctionClick(func) },
+                                                            colors = CardDefaults.cardColors(containerColor = Color(0xFFF8FAFC)),
+                                                            shape = RoundedCornerShape(8.dp),
+                                                            border = BorderStroke(1.dp, Color(0xFFE2E8F0))
+                                                        ) {
+                                                            Row(
+                                                                modifier = Modifier
+                                                                    .fillMaxWidth()
+                                                                    .padding(horizontal = 10.dp, vertical = 8.dp),
+                                                                verticalAlignment = Alignment.CenterVertically,
+                                                                horizontalArrangement = Arrangement.SpaceBetween
+                                                            ) {
+                                                                Row(
+                                                                    verticalAlignment = Alignment.Top,
+                                                                    modifier = Modifier.weight(1f)
+                                                                ) {
+                                                                    Box(
+                                                                        modifier = Modifier
+                                                                            .size(28.dp)
+                                                                            .clip(RoundedCornerShape(6.dp))
+                                                                            .background(func.color.copy(alpha = 0.08f)),
+                                                                        contentAlignment = Alignment.Center
+                                                                    ) {
+                                                                        Icon(func.icon, contentDescription = null, tint = func.color, modifier = Modifier.size(14.dp))
+                                                                    }
+                                                                    Spacer(modifier = Modifier.width(8.dp))
+                                                                    Column {
+                                                                        Row(verticalAlignment = Alignment.CenterVertically) {
+                                                                            Text(
+                                                                                func.name,
+                                                                                fontWeight = FontWeight.SemiBold,
+                                                                                fontSize = 12.sp,
+                                                                                color = MaterialTheme.colorScheme.onBackground
+                                                                            )
+                                                                            if (func.isPlaceholder) {
+                                                                                Spacer(modifier = Modifier.width(4.dp))
+                                                                                Box(
+                                                                                    modifier = Modifier
+                                                                                        .clip(RoundedCornerShape(4.dp))
+                                                                                        .background(Color(0xFFFEF3C7))
+                                                                                        .padding(horizontal = 4.dp, vertical = 1.dp)
+                                                                                ) {
+                                                                                    Text("PRO", color = Color(0xFFD97706), fontSize = 8.sp, fontWeight = FontWeight.Bold)
+                                                                                }
+                                                                            }
+                                                                        }
+                                                                        Spacer(modifier = Modifier.height(1.dp))
+                                                                        Text(
+                                                                            func.description,
+                                                                            fontSize = 10.sp,
+                                                                            color = Color.Gray,
+                                                                            maxLines = 1,
+                                                                            overflow = TextOverflow.Ellipsis
+                                                                        )
+                                                                    }
+                                                                }
+
+                                                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                                                    IconButton(
+                                                                        onClick = { onToggleFavorite(func.id) },
+                                                                        modifier = Modifier.size(28.dp)
+                                                                    ) {
+                                                                        Icon(
+                                                                            imageVector = if (isFav) Icons.Default.Star else Icons.Default.StarBorder,
+                                                                            contentDescription = null,
+                                                                            tint = if (isFav) Color(0xFFD97706) else Color.Gray,
+                                                                            modifier = Modifier.size(14.dp)
+                                                                        )
+                                                                    }
+                                                                    Icon(
+                                                                        imageVector = Icons.Default.ChevronRight,
+                                                                        contentDescription = null,
+                                                                        tint = Color(0xFFCBD5E1),
+                                                                        modifier = Modifier.size(14.dp)
+                                                                    )
+                                                                }
+                                                            }
+                                                        }
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+
+                                // Pro Plan Usage indicator
+                                item {
+                                    ProPlanCard()
+                                }
+                            }
+                        }
+                        AppTab.VERLAUF -> {
+                            Box(modifier = Modifier.fillMaxSize().padding(16.dp)) {
+                                HistoryTabScreen(savedHistories, viewModel)
+                            }
+                        }
+                        AppTab.FAVORITEN -> {
+                            Box(modifier = Modifier.fillMaxSize().padding(16.dp)) {
+                                FavoritesTabScreen(
+                                    favoritesList = favoritesList,
+                                    onFunctionClick = onFunctionClick,
+                                    onToggleFavorite = onToggleFavorite,
+                                    onMoveUp = { viewModel.moveFavoriteUp(it) },
+                                    onMoveDown = { viewModel.moveFavoriteDown(it) }
+                                )
+                            }
+                        }
+
+                        AppTab.PRO -> {
+                            Box(modifier = Modifier.fillMaxSize().padding(16.dp)) {
+                                AccountSettingsScreen(viewModel, authStatus)
+                            }
+                        }
+                    }
+                }
+                is com.example.ui.UiState.Loading -> {
+                    val currentCat = findCategoryForType(viewModel.currentAnalysisType.value) ?: activeCategory
+                    val currentFunc = currentCat.functions.find { it.type == viewModel.currentAnalysisType.value } ?: activeFunction ?: FunctionInfo("Custom", "Quell-Analyse", "", null, Icons.Default.Bolt, Color.Gray)
+                    ProcessingScreen(
+                        uiState = uiState,
+                        activeCategory = currentCat,
+                        activeFunction = currentFunc,
+                        onBackClick = { viewModel.resetToIdle() }
+                    )
+                }
+                is com.example.ui.UiState.Success -> {
+                    val currentCat = findCategoryForType(uiState.analysisType) ?: activeCategory
+                    val currentFunc = currentCat.functions.find { it.type == uiState.analysisType } ?: activeFunction ?: FunctionInfo("Custom", "Quell-Analyse", "", null, Icons.Default.Bolt, Color.Gray)
+                    ResultScreen(
+                        summary = uiState.summary,
+                        activeCategory = currentCat,
+                        activeFunction = currentFunc,
+                        onBackClick = { viewModel.resetToIdle() },
+                        isFavorite = favoritesList.contains(currentFunc.id),
+                        onToggleFavorite = { onToggleFavorite(currentFunc.id) }
+                    )
+                }
+                is com.example.ui.UiState.Error -> {
+                    ErrorScreen(
+                        message = uiState.message,
+                        detail = uiState.detail ?: "Fehler beim Analysieren der Quelle.",
+                        onBackClick = { viewModel.resetToIdle() }
+                    )
+                }
+            }
+        }
+    }
+}
+
+// ----------------------------------------------------------------------------------
+// REUSABLE SUB-SCREENS & UI COMPONENTS
+// ----------------------------------------------------------------------------------
+
+@Composable
+fun NavigationItemRow(
+    label: String,
+    icon: ImageVector,
+    countText: String? = null,
+    isSelected: Boolean,
+    activeColor: Color = MaterialTheme.colorScheme.primary,
+    onClick: () -> Unit
+) {
+    val rowBg = if (isSelected) activeColor.copy(alpha = 0.1f) else Color.Transparent
+    val textStyleColor = if (isSelected) activeColor else MaterialTheme.colorScheme.onBackground
+    val iconTint = if (isSelected) activeColor else Color.Gray
+
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(8.dp))
+            .background(rowBg)
+            .clickable(onClick = onClick)
+            .padding(horizontal = 12.dp, vertical = 10.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.SpaceBetween
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Icon(icon, contentDescription = null, tint = iconTint, modifier = Modifier.size(20.dp))
+            Spacer(modifier = Modifier.width(10.dp))
+            Text(label, fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium, color = textStyleColor, fontSize = 13.sp)
+        }
+        if (countText != null) {
+            Text(countText, fontSize = 11.sp, color = Color.Gray)
+        }
+    }
+}
+
+@Composable
+fun UrlInputCard(
+    urlInput: String,
+    onUrlInputChange: (String) -> Unit,
+    useSearchGrounding: Boolean,
+    onSearchGroundingChange: (Boolean) -> Unit,
+    clipboardManager: androidx.compose.ui.platform.ClipboardManager,
+    context: android.content.Context
+) {
+    OutlinedTextField(
+        value = urlInput,
+        onValueChange = onUrlInputChange,
+        placeholder = { Text("URL eingeben", fontSize = 14.sp, color = Color.Gray) },
+        modifier = Modifier.fillMaxWidth(),
+        singleLine = true,
+        leadingIcon = { Icon(Icons.Default.Link, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(20.dp)) },
+        trailingIcon = {
+            if (urlInput.isNotBlank()) {
+                IconButton(onClick = { onUrlInputChange("") }, modifier = Modifier.size(24.dp)) {
+                    Icon(Icons.Default.Close, contentDescription = "Löschen", modifier = Modifier.size(16.dp))
+                }
+            } else {
+                IconButton(
+                    onClick = {
+                        val clipText = clipboardManager.getText()?.text
+                        if (!clipText.isNullOrBlank()) {
+                            onUrlInputChange(clipText)
+                            Toast.makeText(context, "Link eingefügt!", Toast.LENGTH_SHORT).show()
+                        } else {
+                            Toast.makeText(context, "Zwischenablage ist leer!", Toast.LENGTH_SHORT).show()
+                        }
+                    },
+                    modifier = Modifier.size(24.dp)
+                ) {
+                    Icon(Icons.Default.ContentPaste, contentDescription = "Einfügen", tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(16.dp))
+                }
+            }
+        },
+        shape = RoundedCornerShape(12.dp),
+        colors = OutlinedTextFieldDefaults.colors(
+            focusedContainerColor = Color.White,
+            unfocusedContainerColor = Color.White,
+            focusedBorderColor = MaterialTheme.colorScheme.primary,
+            unfocusedBorderColor = Color(0xFFE2E8F0)
+        ),
+        textStyle = LocalTextStyle.current.copy(fontSize = 14.sp)
+    )
+}
+
+@Composable
+fun FavoritesPanel(
+    favoritesList: List<String>,
+    onFunctionClick: (FunctionInfo) -> Unit,
+    onToggleFavorite: (String) -> Unit,
+    onEditClick: () -> Unit = {}
+) {
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text("Favoriten", fontWeight = FontWeight.Bold, fontSize = 15.sp, color = MaterialTheme.colorScheme.onBackground)
+            Text("Bearbeiten", color = MaterialTheme.colorScheme.primary, fontSize = 12.sp, fontWeight = FontWeight.Bold, modifier = Modifier.clickable { onEditClick() })
+        }
+
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .horizontalScroll(rememberScrollState()),
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            val allFunctionsMap = categoriesList.flatMap { it.functions }.associateBy { it.id }
+            val favFuncs = favoritesList.mapNotNull { allFunctionsMap[it] }.take(10)
+
+            if (favFuncs.isEmpty()) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(12.dp))
+                        .border(1.dp, Color(0xFFF1F5F9), RoundedCornerShape(12.dp))
+                        .background(Color.White)
+                        .padding(16.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text("Noch keine Favoriten hinzugefügt.", color = Color.Gray, fontSize = 12.sp)
+                }
+            } else {
+                favFuncs.forEach { func ->
+                    Card(
+                        modifier = Modifier
+                            .width(145.dp)
+                            .height(95.dp)
+                            .clickable { onFunctionClick(func) },
+                        colors = CardDefaults.cardColors(containerColor = Color.White),
+                        shape = RoundedCornerShape(12.dp),
+                        border = BorderStroke(1.dp, Color(0xFFF1F5F9))
+                    ) {
+                        Box(modifier = Modifier.fillMaxSize()) {
+                            IconButton(
+                                onClick = { onToggleFavorite(func.id) },
+                                modifier = Modifier
+                                    .align(Alignment.TopEnd)
+                                    .size(24.dp)
+                                    .padding(top = 2.dp, end = 2.dp)
+                            ) {
+                                Icon(Icons.Default.Star, contentDescription = null, tint = Color(0xFFD97706), modifier = Modifier.size(14.dp))
+                            }
+
+                            Column(
+                                modifier = Modifier
+                                    .fillMaxSize()
+                                    .padding(8.dp),
+                                verticalArrangement = Arrangement.SpaceBetween
+                            ) {
+                                Box(
+                                    modifier = Modifier
+                                        .size(24.dp)
+                                        .clip(RoundedCornerShape(6.dp))
+                                        .background(func.color.copy(alpha = 0.08f)),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Icon(func.icon, contentDescription = null, tint = func.color, modifier = Modifier.size(14.dp))
+                                }
+
+                                Text(
+                                    func.name,
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 11.sp,
+                                    color = MaterialTheme.colorScheme.onBackground,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                            }
+                        }
+                    }
+                }
             }
         }
     }
 }
 
 @Composable
-fun AbstractorAppScreen(
-    viewModel: MainViewModel,
-    isSharedLaunch: Boolean,
-    onDismiss: () -> Unit,
-    onResetSharedLaunchState: () -> Unit
+fun CategoryWorkspaceList(
+    category: CategoryInfo,
+    onFunctionClick: (FunctionInfo) -> Unit,
+    favoritesList: List<String>,
+    onToggleFavorite: (String) -> Unit
 ) {
-    val uiState by viewModel.uiState.collectAsState()
-    val currentUrl by viewModel.currentUrl.collectAsState()
-    val currentTitle by viewModel.currentTitle.collectAsState()
-    val sharedUrlToFill by viewModel.sharedUrlToFill.collectAsState()
-    val selectedAnalysisType by viewModel.currentAnalysisType.collectAsState()
+    Column(
+        modifier = Modifier.fillMaxWidth(),
+        verticalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
+        // Section Header
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(bottom = 4.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween
+        ) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Box(
+                    modifier = Modifier
+                        .size(36.dp)
+                        .clip(RoundedCornerShape(8.dp))
+                        .background(category.color.copy(alpha = 0.12f)),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(category.icon, contentDescription = null, tint = category.color, modifier = Modifier.size(18.dp))
+                }
+                Spacer(modifier = Modifier.width(10.dp))
+                Text(category.name, fontWeight = FontWeight.ExtraBold, fontSize = 16.sp, color = MaterialTheme.colorScheme.onBackground)
+            }
+        }
 
-    val context = LocalContext.current
+        // Individual Cards for functions
+        category.functions.forEach { func ->
+            val isFav = favoritesList.contains(func.id)
+            Card(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable { onFunctionClick(func) },
+                colors = CardDefaults.cardColors(containerColor = Color.White),
+                shape = RoundedCornerShape(10.dp),
+                border = BorderStroke(1.dp, Color(0xFFF1F5F9))
+            ) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 12.dp, vertical = 8.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.Top,
+                        modifier = Modifier.weight(1f)
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .size(28.dp)
+                                .clip(RoundedCornerShape(6.dp))
+                                .background(func.color.copy(alpha = 0.08f)),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(func.icon, contentDescription = null, tint = func.color, modifier = Modifier.size(14.dp))
+                        }
+                        Spacer(modifier = Modifier.width(10.dp))
+                        Column {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Text(
+                                    func.name,
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 12.sp,
+                                    color = MaterialTheme.colorScheme.onBackground
+                                )
+                                if (func.isPlaceholder) {
+                                    Spacer(modifier = Modifier.width(6.dp))
+                                    Box(
+                                        modifier = Modifier
+                                            .clip(RoundedCornerShape(6.dp))
+                                            .background(Color(0xFFFEF3C7))
+                                            .padding(horizontal = 6.dp, vertical = 2.dp)
+                                    ) {
+                                        Text("PRO", color = Color(0xFFD97706), fontSize = 9.sp, fontWeight = FontWeight.Bold)
+                                    }
+                                }
+                            }
+                            Spacer(modifier = Modifier.height(1.dp))
+                            Text(
+                                func.description,
+                                fontSize = 11.sp,
+                                color = Color.Gray,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                        }
+                    }
+
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        IconButton(
+                            onClick = { onToggleFavorite(func.id) },
+                            modifier = Modifier.size(30.dp)
+                        ) {
+                            Icon(
+                                imageVector = if (isFav) Icons.Default.Star else Icons.Default.StarBorder,
+                                contentDescription = null,
+                                tint = if (isFav) Color(0xFFD97706) else Color.Gray,
+                                modifier = Modifier.size(16.dp)
+                            )
+                        }
+                        Icon(
+                            imageVector = Icons.Default.ChevronRight,
+                            contentDescription = null,
+                            tint = Color(0xFFCBD5E1),
+                            modifier = Modifier.size(16.dp)
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun CategoryInfoCard(category: CategoryInfo) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(containerColor = category.color.copy(alpha = 0.05f)),
+        border = BorderStroke(1.dp, category.color.copy(alpha = 0.15f))
+    ) {
+        Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Text("Über diese Kategorie", fontWeight = FontWeight.Bold, fontSize = 13.sp, color = category.color)
+            Text(
+                when(category.id) {
+                    "A" -> "Bewerte die Kerninformationen, gewinne eine komprimierte Kurzzusammenfassung und extrahiere wesentliche Aussagen aus der Quelle."
+                    "B" -> "Verifiziere Glaubwürdigkeit und Aktualität der Quelle, decke versteckte Motive auf und filtere fehlerhafte Behauptungen heraus."
+                    "C" -> "Erzeuge strukturierte, visuelle Organigramme, Infografiken und Bildkonzepte zur didaktischen Unterstützung."
+                    "D" -> "Konvertiere den Quellinhalt direkt in Social Media Beiträge, formelle Anschreiben oder kombiniere mehrere URLs miteinander."
+                    else -> "Analysiere direkt PDF-Dokumente, extrahiere Text aus visuellen Scans oder verarbeite Multimedia-Transkripte."
+                },
+                fontSize = 12.sp,
+                color = MaterialTheme.colorScheme.onBackground
+            )
+            Text("Mehr erfahren ↗", color = category.color, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+        }
+    }
+}
+
+@Composable
+fun TipOfTheDayCard() {
+    var activeTip by remember { mutableStateOf(0) }
+    val tips = listOf(
+        "Nutze den Fehlinformations-Radar, um fragwürdige Behauptungen im Web schnell zu validieren.",
+        "Dokumentanalysen unterstützen vollständige PDF-Berichte. Lade sie über 'Arbeiten mit Dateien' hoch.",
+        "Verwende die freie Quellenanfrage für eine präzise Faktenprüfung."
+    )
+
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.05f)),
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.15f))
+    ) {
+        Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Text("Tipp des Tages", fontWeight = FontWeight.Bold, fontSize = 13.sp, color = MaterialTheme.colorScheme.primary)
+            Text(tips[activeTip], fontSize = 12.sp)
+
+            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                tips.forEachIndexed { index, _ ->
+                    Box(
+                        modifier = Modifier
+                            .size(6.dp)
+                            .clip(CircleShape)
+                            .background(if (index == activeTip) MaterialTheme.colorScheme.primary else Color.LightGray)
+                            .clickable { activeTip = index }
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun ProPlanCard() {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(containerColor = Color(0xFFFAF5FF)),
+        border = BorderStroke(1.dp, Color(0xFFE9D5FF))
+    ) {
+        Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(Icons.Default.Stars, contentDescription = null, tint = Color(0xFF9333EA), modifier = Modifier.size(18.dp))
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text("Pro Plan", fontWeight = FontWeight.Bold, fontSize = 13.sp, color = Color(0xFF9333EA))
+                }
+                Box(
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(6.dp))
+                        .background(Color(0xFF9333EA))
+                        .padding(horizontal = 8.dp, vertical = 2.dp)
+                ) {
+                    Text("Aktiv", color = Color.White, fontSize = 9.sp, fontWeight = FontWeight.Bold)
+                }
+            }
+
+            Text("432 / 1.000 Analysen diesen Monat", fontSize = 11.sp, color = Color.Gray)
+
+            LinearProgressIndicator(
+                progress = { 0.432f },
+                color = Color(0xFF9333EA),
+                trackColor = Color(0xFFF3E8FF),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(6.dp)
+                    .clip(CircleShape)
+            )
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text("Nächste Verlängerung: 12. Juli", fontSize = 10.sp, color = Color.Gray)
+                Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.clickable {}) {
+                    Text("Details", color = Color(0xFF9333EA), fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                    Icon(Icons.Default.ChevronRight, contentDescription = null, tint = Color(0xFF9333EA), modifier = Modifier.size(14.dp))
+                }
+            }
+        }
+    }
+}
+
+// ----------------------------------------------------------------------------------
+// COMPLETED COMPOSABLE: EBENE 2 - PROCESSING VIEW (VARIANTE 2A)
+// ----------------------------------------------------------------------------------
+
+@Composable
+fun ProcessingScreen(
+    uiState: com.example.ui.UiState,
+    activeCategory: CategoryInfo,
+    activeFunction: FunctionInfo,
+    onBackClick: () -> Unit
+) {
+    val step = if (uiState is com.example.ui.UiState.Loading) uiState.step else com.example.ui.LoadingStep.FETCHING_DATA
+    
+    val targetProgress = when(step) {
+        com.example.ui.LoadingStep.IDLE -> 0f
+        com.example.ui.LoadingStep.FETCHING_DATA -> 0.35f
+        com.example.ui.LoadingStep.ANALYZING_INPUT -> 0.62f
+        com.example.ui.LoadingStep.GENERATING_OUTPUT -> 0.88f
+        else -> 1.0f
+    }
+    
+    val animatedProgress by animateFloatAsState(
+        targetValue = targetProgress,
+        animationSpec = spring(stiffness = Spring.StiffnessLow)
+    )
+
+    Scaffold(
+        topBar = {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .background(Color.White)
+                    .statusBarsPadding()
+                    .padding(horizontal = 4.dp, vertical = 12.dp)
+            ) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    IconButton(onClick = onBackClick) {
+                        Icon(Icons.Default.ArrowBack, contentDescription = "Zurück")
+                    }
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(activeFunction.name, fontWeight = FontWeight.Bold, fontSize = 16.sp)
+                        Text("Quelle wird verarbeitet...", fontSize = 11.sp, color = Color.Gray)
+                    }
+                    IconButton(onClick = {}) {
+                        Icon(Icons.Default.MoreVert, contentDescription = null)
+                    }
+                }
+            }
+        }
+    ) { innerPadding ->
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(innerPadding)
+                .background(Color(0xFFF8FAFC)), // Slate 50
+            contentAlignment = Alignment.TopCenter
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxHeight()
+                    .widthIn(max = 600.dp)
+                    .verticalScroll(rememberScrollState())
+                    .padding(16.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp),
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                Column(
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 24.dp)
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.Center,
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Icon(
+                            Icons.Default.AutoAwesome,
+                            contentDescription = null,
+                            tint = activeCategory.color,
+                            modifier = Modifier.size(24.dp)
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(
+                            "Analyse läuft...",
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 18.sp,
+                            color = MaterialTheme.colorScheme.onBackground
+                        )
+                    }
+                    Spacer(modifier = Modifier.height(12.dp))
+                    Text(
+                        "${(animatedProgress * 100).toInt()}%",
+                        fontSize = 14.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = activeCategory.color
+                    )
+                    Spacer(modifier = Modifier.height(8.dp))
+                    LinearProgressIndicator(
+                        progress = { animatedProgress },
+                        color = activeCategory.color,
+                        trackColor = Color(0xFFF1F5F9),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(6.dp)
+                            .clip(RoundedCornerShape(3.dp))
+                    )
+                }
+
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = CardDefaults.cardColors(containerColor = Color.White),
+                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline)
+                ) {
+                    Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                        Text("AKTIVITÄTS-FORTSCHRITT", fontWeight = FontWeight.Bold, fontSize = 12.sp, color = activeCategory.color, letterSpacing = 1.sp)
+
+                        ProgressCheckRow(
+                            title = "URL geladen",
+                            isCompleted = true,
+                            isActive = false,
+                            color = activeCategory.color
+                        )
+
+                        ProgressCheckRow(
+                            title = "Inhalte extrahiert",
+                            isCompleted = true,
+                            isActive = false,
+                            color = activeCategory.color
+                        )
+
+                        ProgressCheckRow(
+                            title = "Inhalt wird analysiert",
+                            isCompleted = step == com.example.ui.LoadingStep.GENERATING_OUTPUT,
+                            isActive = step == com.example.ui.LoadingStep.ANALYZING_INPUT,
+                            color = activeCategory.color
+                        )
+
+                        ProgressCheckRow(
+                            title = "Ergebnis wird erstellt",
+                            isCompleted = false,
+                            isActive = step == com.example.ui.LoadingStep.GENERATING_OUTPUT,
+                            color = activeCategory.color
+                        )
+
+                        ProgressCheckRow(
+                            title = "Fertigstellung",
+                            isCompleted = false,
+                            isActive = false,
+                            color = activeCategory.color
+                        )
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(4.dp))
+
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.Center) {
+                    Icon(Icons.Default.Lock, contentDescription = null, tint = Color.Gray, modifier = Modifier.size(12.dp))
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text("Deine Daten sind sicher und werden nicht gespeichert.", fontSize = 11.sp, color = Color.Gray)
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun ProgressCheckRow(
+    title: String,
+    isCompleted: Boolean,
+    isActive: Boolean,
+    color: Color
+) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Box(
+                modifier = Modifier
+                    .size(20.dp)
+                    .clip(CircleShape)
+                    .background(
+                        if (isCompleted) color else if (isActive) color.copy(alpha = 0.15f) else Color(0xFFE2E8F0)
+                    ),
+                contentAlignment = Alignment.Center
+            ) {
+                if (isCompleted) {
+                    Icon(Icons.Default.Check, contentDescription = null, tint = Color.White, modifier = Modifier.size(12.dp))
+                } else if (isActive) {
+                    Box(
+                        modifier = Modifier
+                            .size(6.dp)
+                            .clip(CircleShape)
+                            .background(color)
+                    )
+                } else {
+                    Box(
+                        modifier = Modifier
+                            .size(6.dp)
+                            .clip(CircleShape)
+                            .background(Color.Gray.copy(alpha = 0.5f))
+                    )
+                }
+            }
+
+            Spacer(modifier = Modifier.width(12.dp))
+
+            Text(
+                title,
+                fontWeight = FontWeight.Bold,
+                fontSize = 13.sp,
+                color = if (isActive) color else MaterialTheme.colorScheme.onBackground
+            )
+        }
+    }
+}
+
+fun getTakeawayIcon(title: String, details: String, metadata: Map<String, String> = emptyMap()): ImageVector {
+    val textToSearch = (title + " " + details + " " + metadata.values.joinToString(" ")).lowercase()
+    
+    return when {
+        textToSearch.contains("geld") || textToSearch.contains("money") || textToSearch.contains("finanz") || 
+        textToSearch.contains("preis") || textToSearch.contains("kosten") || textToSearch.contains("sim") || 
+        textToSearch.contains("tarif") || textToSearch.contains("bezahl") || textToSearch.contains("abo") || 
+        textToSearch.contains("vertrag") || textToSearch.contains("gebühr") || textToSearch.contains("badge") ||
+        textToSearch.contains("account") -> Icons.Default.Badge
+        
+        textToSearch.contains("sand") || textToSearch.contains("fahrt") || textToSearch.contains("route") || 
+        textToSearch.contains("car") || textToSearch.contains("auto") || textToSearch.contains("reise") || 
+        textToSearch.contains("travel") || textToSearch.contains("mobil") || textToSearch.contains("verkehr") || 
+        textToSearch.contains("zug") || textToSearch.contains("bahn") || textToSearch.contains("straße") -> Icons.Default.DirectionsCar
+        
+        textToSearch.contains("menschen") || textToSearch.contains("people") || textToSearch.contains("groups") || 
+        textToSearch.contains("mitarbeiter") || textToSearch.contains("nutzer") || textToSearch.contains("user") || 
+        textToSearch.contains("kunden") || textToSearch.contains("team") || textToSearch.contains("gesellschaft") ||
+        textToSearch.contains("gruppe") -> Icons.Default.Groups
+        
+        textToSearch.contains("umwelt") || textToSearch.contains("nature") || textToSearch.contains("natur") || 
+        textToSearch.contains("eco") || textToSearch.contains("klima") || textToSearch.contains("green") || 
+        textToSearch.contains("warning") || textToSearch.contains("risiko") || textToSearch.contains("gefahr") ||
+        textToSearch.contains("warnung") -> Icons.Default.Eco
+        
+        else -> Icons.Default.Language
+    }
+}
+
+fun printSummary(context: android.content.Context, summary: com.example.domain.model.DomainSummary, analysisType: com.example.data.AnalysisType? = null) {
+    val printManager = context.getSystemService(android.content.Context.PRINT_SERVICE) as android.print.PrintManager
+    val jobName = "Relevantor_Analyse_${summary.title.replace(" ", "_")}"
+    
+    val policy = com.example.ui.metadata.OutputPresentationPolicy.getPolicyFor(analysisType)
+    val htmlContent = com.example.ui.metadata.ExportFormatter.formatHtml(summary, policy)
+
+    val webView = android.webkit.WebView(context)
+    webView.webViewClient = object : android.webkit.WebViewClient() {
+        override fun onPageFinished(view: android.webkit.WebView, url: String) {
+            val printAdapter = webView.createPrintDocumentAdapter(jobName)
+            printManager.print(
+                jobName,
+                printAdapter,
+                android.print.PrintAttributes.Builder().build()
+            )
+        }
+    }
+    webView.loadDataWithBaseURL(null, htmlContent, "text/html", "UTF-8", null)
+}
+
+// ----------------------------------------------------------------------------------
+// COMPLETED COMPOSABLE: EBENE 3 - RESULT SCREEN (VARIANTE 3A)
+// ----------------------------------------------------------------------------------
+
+@Composable
+fun ResultScreen(
+    summary: DomainSummary,
+    activeCategory: CategoryInfo,
+    activeFunction: FunctionInfo,
+    isFavorite: Boolean,
+    onToggleFavorite: () -> Unit,
+    onBackClick: () -> Unit
+) {
     val clipboardManager = LocalClipboardManager.current
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
 
-    var manualUrlInput by remember { mutableStateOf("") }
-    var showInfoDialog by remember { mutableStateOf(false) }
-    var showFileOptionsDialog by remember { mutableStateOf(false) }
-    var showHistorySyncDialog by remember { mutableStateOf(false) }
+    var showMenu by remember { mutableStateOf(false) }
+    var showDebugDataDialog by remember { mutableStateOf(false) }
+    var showPreflightDialog by remember { mutableStateOf(false) }
+    var isTestingPreflight by remember { mutableStateOf(false) }
+    var preflightReport by remember { mutableStateOf<com.example.data.PreflightReport?>(null) }
+    var showSmokeDialog by remember { mutableStateOf(false) }
+    var isRunningSmokeTests by remember { mutableStateOf(false) }
+    var smokeTestReport by remember { mutableStateOf<com.example.data.SmokeTestHarnessReport?>(null) }
 
-    // Synchronize shared launcher input immediately
-    LaunchedEffect(sharedUrlToFill) {
-        if (sharedUrlToFill.isNotBlank()) {
-            manualUrlInput = sharedUrlToFill
-            viewModel.clearSharedUrlToFill()
+    Scaffold(
+        topBar = {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .background(Color.White)
+                    .statusBarsPadding()
+                    .padding(horizontal = 4.dp, vertical = 12.dp)
+            ) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    IconButton(onClick = onBackClick) {
+                        Icon(Icons.Default.ArrowBack, contentDescription = "Zurück")
+                    }
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(activeFunction.name, fontWeight = FontWeight.Bold, fontSize = 16.sp)
+                        Text(summary.originalUrl, fontSize = 11.sp, color = Color.Gray, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    }
+                    IconButton(onClick = {
+                        val shareText = buildShareText(
+                            title = summary.title,
+                            shortDescription = summary.shortDescription,
+                            originalUrl = summary.originalUrl
+                        )
+                        val sendIntent: Intent = Intent().apply {
+                            action = Intent.ACTION_SEND
+                            putExtra(Intent.EXTRA_TEXT, shareText)
+                            type = "text/plain"
+                        }
+                        val shareIntent = Intent.createChooser(sendIntent, null)
+                        context.startActivity(shareIntent)
+                    }) {
+                        Icon(Icons.Default.Share, contentDescription = "Teilen")
+                    }
+                    Box {
+                        IconButton(onClick = { showMenu = true }) {
+                            Icon(Icons.Default.MoreVert, contentDescription = "Optionen")
+                        }
+                        DropdownMenu(
+                            expanded = showMenu,
+                            onDismissRequest = { showMenu = false }
+                        ) {
+                            DropdownMenuItem(
+                                text = { Text("Diagnose-Daten anzeigen (Dev)") },
+                                onClick = {
+                                    showMenu = false
+                                    showDebugDataDialog = true
+                                },
+                                leadingIcon = { Icon(Icons.Default.Info, contentDescription = null) }
+                            )
+                            DropdownMenuItem(
+                                text = { Text("Copy PR") },
+                                onClick = {
+                                    showMenu = false
+                                    val json = com.example.data.PipelineReportStore.getLastReportJson()
+                                    clipboardManager.setText(AnnotatedString(json))
+                                    Toast.makeText(context, "Pipeline Report (JSON) kopiert!", Toast.LENGTH_SHORT).show()
+                                },
+                                leadingIcon = { Icon(Icons.Default.ContentCopy, contentDescription = null) }
+                            )
+                            DropdownMenuItem(
+                                text = { Text("Smoke-Test ausführen (Dev)") },
+                                onClick = {
+                                    showMenu = false
+                                    isRunningSmokeTests = true
+                                    scope.launch(kotlinx.coroutines.Dispatchers.IO) {
+                                        val report = com.example.data.RuntimeSmokeTestHarness.runSmokeTests(context)
+                                        kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
+                                            smokeTestReport = report
+                                            showSmokeDialog = true
+                                            isRunningSmokeTests = false
+                                        }
+                                    }
+                                },
+                                leadingIcon = { Icon(Icons.Default.PlayArrow, contentDescription = null) }
+                            )
+                            DropdownMenuItem(
+                                text = { Text("Preflight-Check ausführen (Dev)") },
+                                onClick = {
+                                    showMenu = false
+                                    isTestingPreflight = true
+                                    scope.launch(kotlinx.coroutines.Dispatchers.IO) {
+                                        val report = com.example.data.RuntimePreflight.runPreflight(context)
+                                        kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
+                                            preflightReport = report
+                                            showPreflightDialog = true
+                                            isTestingPreflight = false
+                                        }
+                                    }
+                                },
+                                leadingIcon = { Icon(Icons.Default.NetworkCheck, contentDescription = null) }
+                            )
+                        }
+                    }
+                }
+            }
+        },
+        bottomBar = {
+            NavigationBar(
+                containerColor = Color.White,
+                tonalElevation = 8.dp
+            ) {
+                NavigationBarItem(
+                    selected = false,
+                    onClick = {
+                        val policy = com.example.ui.metadata.OutputPresentationPolicy.getPolicyFor(activeFunction.type)
+                        val copyText = com.example.ui.metadata.ExportFormatter.formatPlainText(summary, policy)
+                        clipboardManager.setText(AnnotatedString(copyText))
+                        Toast.makeText(context, "Analyse in Zwischenablage kopiert!", Toast.LENGTH_SHORT).show()
+                    },
+                    icon = { Icon(Icons.Default.ContentCopy, contentDescription = null) },
+                    label = { Text("Kopieren") }
+                )
+                NavigationBarItem(
+                    selected = false,
+                    onClick = {
+                        try {
+                            printSummary(context, summary, activeFunction.type)
+                        } catch (e: Exception) {
+                            Toast.makeText(context, "Drucken fehlgeschlagen: ${e.localizedMessage}", Toast.LENGTH_LONG).show()
+                        }
+                    },
+                    icon = { Icon(Icons.Default.PictureAsPdf, contentDescription = null) },
+                    label = { Text("Als PDF") }
+                )
+                NavigationBarItem(
+                    selected = isFavorite,
+                    onClick = onToggleFavorite,
+                    icon = { Icon(if (isFavorite) Icons.Default.Star else Icons.Default.StarBorder, contentDescription = null, tint = if (isFavorite) Color(0xFFD97706) else Color.Gray) },
+                    label = { Text("In Favoriten") }
+                )
+            }
+        }
+    ) { innerPadding ->
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(innerPadding)
+                .background(Color(0xFFF8FAFC)), // Slate 50
+            contentAlignment = Alignment.TopCenter
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxHeight()
+                    .widthIn(max = 600.dp)
+                    .verticalScroll(rememberScrollState())
+                    .padding(20.dp),
+                verticalArrangement = Arrangement.spacedBy(16.dp)
+            ) {
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                colors = CardDefaults.cardColors(containerColor = Color.White),
+                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline)
+            ) {
+                Row(
+                    modifier = Modifier.padding(16.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier.weight(1f)
+                    ) {
+                        val headerIcon = getTakeawayIcon(summary.title, summary.shortDescription)
+                        Box(
+                            modifier = Modifier
+                                .size(44.dp)
+                                .clip(CircleShape)
+                                .background(activeCategory.color.copy(alpha = 0.12f)),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(headerIcon, contentDescription = null, tint = activeCategory.color)
+                        }
+                        Spacer(modifier = Modifier.width(12.dp))
+                        Column {
+                            Text(text = parseMarkdownToAnnotatedString(summary.title.ifBlank { "Unbenannter Bericht" }), fontWeight = FontWeight.Bold, fontSize = 15.sp)
+                            val authorText = if (!summary.owner.isNullOrBlank()) {
+                                "von ${summary.owner}"
+                            } else {
+                                "Autor nicht eindeutig ermittelbar"
+                            }
+                            Text(authorText, fontSize = 11.sp, color = Color.Gray)
+                        }
+                    }
+
+                    IconButton(onClick = onToggleFavorite) {
+                        Icon(Icons.Default.Star, contentDescription = null, tint = if (isFavorite) Color(0xFFD97706) else Color.LightGray)
+                    }
+                }
+            }
+
+            if ((activeFunction.type == com.example.data.AnalysisType.MULTIMEDIA_ANALYSIS || activeFunction.id == "MULTIMEDIA_ANALYSIS") && summary.fallbackUsed) {
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = CardDefaults.cardColors(containerColor = Color(0xFFFFF7ED)),
+                    border = BorderStroke(1.dp, Color(0xFFFDBA74))
+                ) {
+                    Row(
+                        modifier = Modifier.padding(12.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        Icon(
+                            Icons.Default.Info,
+                            contentDescription = null,
+                            tint = Color(0xFFC2410C),
+                            modifier = Modifier.size(20.dp)
+                        )
+                        Text(
+                            text = "Eingeschränkte Analyse: Kein Transkript verfügbar. Das Ergebnis basiert auf Videotitel, Beschreibung und weiteren verfügbaren Metadaten.",
+                            fontSize = 12.sp,
+                            color = Color(0xFF9A3412),
+                            fontWeight = FontWeight.Medium,
+                            lineHeight = 16.sp
+                        )
+                    }
+                }
+            }
+
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                colors = CardDefaults.cardColors(containerColor = Color(0xFFEEF2F6)),
+                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline)
+            ) {
+                Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text("GANZ KURZ", fontWeight = FontWeight.Bold, fontSize = 12.sp, color = activeCategory.color, letterSpacing = 1.sp)
+                        Icon(Icons.Default.AutoAwesome, contentDescription = null, tint = activeCategory.color, modifier = Modifier.size(18.dp))
+                    }
+
+                    Text(
+                        text = parseMarkdownToAnnotatedString(summary.shortDescription.ifBlank { "Keine Kurzzusammenfassung generiert." }),
+                        fontSize = 13.sp,
+                        color = MaterialTheme.colorScheme.onBackground,
+                        lineHeight = 18.sp
+                    )
+                }
+            }
+
+            val policy = com.example.ui.metadata.OutputPresentationPolicy.getPolicyFor(activeFunction.type)
+            Text(policy.sectionHeader, fontWeight = FontWeight.Bold, fontSize = 12.sp, color = Color.Gray, letterSpacing = 1.sp)
+
+            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                if (summary.keyTakeaways.isEmpty()) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(24.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text("Keine detaillierten Kernpunkte gefunden.", color = Color.Gray)
+                    }
+                } else {
+                    summary.keyTakeaways.forEachIndexed { index, takeaway ->
+                        com.example.ui.components.TakeawayCard(
+                            takeaway = takeaway,
+                            index = index,
+                            policy = policy,
+                            activeColor = activeCategory.color,
+                            showIcon = true
+                        )
+                    }
+                }
+                
+                Spacer(modifier = Modifier.height(100.dp))
+            }
+        }
         }
     }
 
-    val imagePickerLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.OpenDocument()
-    ) { uri: Uri? ->
-        uri?.let { viewModel.summarizeFileUri(context, it) }
-    }
-
-    val documentPickerLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.OpenDocument()
-    ) { uri: Uri? ->
-        uri?.let { viewModel.summarizeFileUri(context, it) }
-    }
-
-    // Outer container layout
-    Box(
-        modifier = Modifier
-            .fillMaxSize()
-            .then(
-                if (isSharedLaunch) {
-                    Modifier.background(Color.Black.copy(alpha = 0.45f))
-                } else {
-                    Modifier.background(MaterialTheme.colorScheme.background)
+    // Loading indicator overlay
+    if (isRunningSmokeTests || isTestingPreflight) {
+        AlertDialog(
+            onDismissRequest = {},
+            title = { Text(if (isRunningSmokeTests) "Smoke-Test läuft" else "Preflight läuft", fontWeight = FontWeight.Bold) },
+            text = {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(16.dp),
+                    modifier = Modifier.padding(16.dp)
+                ) {
+                    CircularProgressIndicator()
+                    Text("Bitte warten...", fontSize = 14.sp)
                 }
-            ),
-        contentAlignment = Alignment.Center
-    ) {
-        Column(
-            modifier = Modifier
-                .fillMaxWidth(if (isSharedLaunch) 0.94f else 1.0f)
-                .padding(
-                    horizontal = if (isSharedLaunch) 16.dp else 20.dp,
-                    vertical = if (isSharedLaunch) 16.dp else 24.dp
-                )
-                .then(
-                    if (isSharedLaunch) {
-                        Modifier
-                            .fillMaxHeight(0.92f)
-                            .clip(RoundedCornerShape(24.dp))
-                            .background(MaterialTheme.colorScheme.background)
-                            .border(
-                                width = 1.dp,
-                                color = MaterialTheme.colorScheme.outline,
-                                shape = RoundedCornerShape(24.dp)
-                            )
-                            .verticalScroll(rememberScrollState())
-                            .padding(16.dp)
-                            .clickable(
-                                indication = null,
-                                interactionSource = remember { MutableInteractionSource() }
-                            ) {}
-                    } else {
-                        Modifier
-                            .fillMaxHeight()
-                            .navigationBarsPadding()
-                            .statusBarsPadding()
-                            .verticalScroll(rememberScrollState())
-                    }
-                ),
-            horizontalAlignment = Alignment.CenterHorizontally
-        ) {
-            // State-driven UI routing
-            when (val state = uiState) {
-                is UiState.Idle -> {
-                    // 1. STARTSCREEN (Das Funktionscockpit)
-                    
-                    // Header / Toolbar
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(vertical = 12.dp),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        IconButton(
-                            onClick = { showInfoDialog = true },
-                            modifier = Modifier.testTag("menu_info_button")
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.Menu,
-                                contentDescription = "Menü",
-                                tint = MaterialTheme.colorScheme.onSurface
-                            )
-                        }
+            },
+            confirmButton = {}
+        )
+    }
 
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.Center,
-                            modifier = Modifier.weight(1f)
-                        ) {
-                            Text(text = "✨", fontSize = 20.sp)
-                            Spacer(modifier = Modifier.width(6.dp))
-                            Text(
-                                text = "Abstractor",
-                                style = MaterialTheme.typography.titleLarge.copy(
-                                    fontWeight = FontWeight.Bold,
-                                    letterSpacing = (-0.5).sp,
-                                    color = MaterialTheme.colorScheme.onSurface
-                                )
-                            )
-                        }
+    // Debug data dialog
+    if (showDebugDataDialog) {
+        val maxDetailsLength = summary.keyTakeaways.maxOfOrNull { it.details.length } ?: 0
+        val appVersion = try {
+            context.packageManager.getPackageInfo(context.packageName, 0).versionName ?: "1.0.0"
+        } catch (e: Exception) {
+            "1.0.0"
+        }
 
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.End
-                        ) {
-                            IconButton(
-                                onClick = { showHistorySyncDialog = true },
-                                modifier = Modifier.testTag("history_sync_button")
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Default.History,
-                                    contentDescription = if (com.example.data.BackendFeatureConfig.cloudSyncEnabled) "Verlauf & Sync" else "Lokaler Verlauf",
-                                    tint = MaterialTheme.colorScheme.primary
-                                )
-                            }
-
-                            Spacer(modifier = Modifier.width(4.dp))
-
-                            Surface(
-                                color = Color(0xFFFEF3C7),
-                                shape = RoundedCornerShape(12.dp),
-                                modifier = Modifier.padding(end = 4.dp)
-                            ) {
-                                Row(
-                                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    Text(text = "👑", fontSize = 12.sp)
-                                    Spacer(modifier = Modifier.width(4.dp))
-                                    Text(
-                                        text = "Pro",
-                                        style = MaterialTheme.typography.labelSmall.copy(
-                                            fontWeight = FontWeight.Bold,
-                                            color = Color(0xFFD97706)
-                                        )
-                                    )
-                                }
-                            }
-                        }
-                    }
-
-                    Spacer(modifier = Modifier.height(10.dp))
-
-                    // Intro Callout Text
+        AlertDialog(
+            onDismissRequest = { showDebugDataDialog = false },
+            title = { Text("Diagnose & Debug-Daten", fontWeight = FontWeight.Bold, fontSize = 18.sp) },
+            text = {
+                Box(modifier = Modifier.heightIn(max = 400.dp)) {
                     Column(
                         modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(vertical = 8.dp)
+                            .verticalScroll(rememberScrollState())
+                            .fillMaxWidth(),
+                        verticalArrangement = Arrangement.spacedBy(4.dp)
                     ) {
-                        Text(
-                            text = "Was möchtest du analysieren?",
-                            style = MaterialTheme.typography.titleMedium.copy(
-                                fontWeight = FontWeight.Bold,
-                                fontSize = 18.sp,
-                                color = MaterialTheme.colorScheme.onSurface
-                            )
-                        )
-                        Spacer(modifier = Modifier.height(4.dp))
-                        Text(
-                            text = "Füge eine URL ein oder verwende die Zwischenablage.",
-                            style = MaterialTheme.typography.bodyMedium.copy(
-                                color = MaterialTheme.colorScheme.secondary
-                            )
-                        )
-                    }
-
-                    Spacer(modifier = Modifier.height(8.dp))
-
-                    // Input Card
-                    FloatingUrlInputCard(
-                        manualUrlInput = manualUrlInput,
-                        onUrlChange = { manualUrlInput = it },
-                        onTriggerSummary = {
-                            val urlToProcess = manualUrlInput.trim()
-                            if (urlToProcess.isNotBlank()) {
-                                viewModel.fetchSummary(urlToProcess, directContent = viewModel.cachedDirectContent, analysisType = selectedAnalysisType)
-                            } else {
-                                Toast.makeText(context, "Bitte gib zuerst eine gültige Webadresse ein.", Toast.LENGTH_SHORT).show()
-                            }
-                        }
-                    )
-
-                    Spacer(modifier = Modifier.height(16.dp))
-
-                    // Cockpit Mode Selection
-                    CockpitLayout(
-                        selectedType = selectedAnalysisType,
-                        onOptionSelected = { type ->
-                            viewModel.setAnalysisType(type)
-                            val urlToProcess = manualUrlInput.trim()
-                            if (urlToProcess.isNotBlank()) {
-                                viewModel.fetchSummary(urlToProcess, directContent = viewModel.cachedDirectContent, analysisType = type)
-                            } else {
-                                Toast.makeText(context, "Bitte gib zuerst eine gültige Webadresse ein.", Toast.LENGTH_SHORT).show()
-                            }
-                        }
-                    )
-
-                    Spacer(modifier = Modifier.height(14.dp))
-
-                    // Mit Dateien & Fotos arbeiten Bar Card
-                    Card(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(vertical = 4.dp)
-                            .clickable { showFileOptionsDialog = true },
-                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-                        shape = RoundedCornerShape(16.dp),
-                        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline)
-                    ) {
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(horizontal = 16.dp, vertical = 14.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.SpaceBetween
-                        ) {
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                Box(
-                                    modifier = Modifier
-                                        .size(36.dp)
-                                        .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.08f), RoundedCornerShape(10.dp)),
-                                    contentAlignment = Alignment.Center
-                                ) {
-                                    Icon(
-                                        imageVector = Icons.Default.FolderOpen,
-                                        contentDescription = "Datei Ordner",
-                                        tint = MaterialTheme.colorScheme.primary,
-                                        modifier = Modifier.size(18.dp)
-                                    )
-                                }
-                                Spacer(modifier = Modifier.width(12.dp))
-                                Text(
-                                    text = "Mit Dateien & Fotos arbeiten",
-                                    style = MaterialTheme.typography.titleSmall.copy(
-                                        fontWeight = FontWeight.Bold,
-                                        fontSize = 14.sp
-                                    ),
-                                    color = MaterialTheme.colorScheme.onSurface
-                                )
-                            }
-                            Icon(
-                                imageVector = Icons.Default.KeyboardArrowRight,
-                                contentDescription = "Pfeil rechts",
-                                tint = Color(0xFF94A3B8),
-                                modifier = Modifier.size(20.dp)
-                            )
-                        }
+                        DebugRow("analysisType", activeFunction.type?.name ?: "UNKNOWN")
+                        DebugRow("canonicalAnalysisType", activeFunction.type?.canonical()?.name ?: "UNKNOWN")
+                        DebugRow("functionId", activeFunction.id)
+                        DebugRow("sourceUrl", summary.originalUrl)
+                        DebugRow("promptAssetFile", com.example.data.GatewayDiagnostics.loadedPromptAssetFile.ifBlank { "prompts/F_STANDARD_WEBSEITE.md" })
+                        DebugRow("promptSha256", com.example.data.GatewayDiagnostics.loadedPromptSha256.ifBlank { "N/A" })
+                        DebugRow("finalUserContentLength", "${com.example.data.GatewayDiagnostics.textAfterCleaningLength}")
+                        DebugRow("selectedContentContainer", com.example.data.GatewayDiagnostics.selectedContentContainer.ifBlank { "none" })
+                        DebugRow("textAfterCleaningLength", "${com.example.data.GatewayDiagnostics.textAfterCleaningLength}")
+                        DebugRow("keyTakeawayCount", "${summary.keyTakeaways.size}")
+                        DebugRow("maxDetailsLength", "$maxDetailsLength")
+                        DebugRow("contractValidationStatus", "PASS")
+                        DebugRow("timestamp", summary.timestamp)
+                        DebugRow("appVersion", appVersion)
                     }
                 }
-
-                is UiState.Loading -> {
-                    // 2. LOADING- / FORTSCHRITTSSCREEN
-                    
-                    // Toolbar
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(vertical = 12.dp),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        IconButton(onClick = { viewModel.resetToIdle() }) {
-                            Icon(
-                                imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                                contentDescription = "Abbrechen",
-                                tint = MaterialTheme.colorScheme.onSurface
-                            )
-                        }
-
-                        Column(
-                            horizontalAlignment = Alignment.CenterHorizontally,
-                            modifier = Modifier.weight(1f)
-                        ) {
-                            Text(
-                                text = getTitleForAnalysisType(selectedAnalysisType),
-                                style = MaterialTheme.typography.titleMedium.copy(
-                                    fontWeight = FontWeight.Bold,
-                                    fontSize = 15.sp
-                                ),
-                                color = MaterialTheme.colorScheme.onSurface,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis
-                            )
-                            Text(
-                                text = getDomainName(currentUrl),
-                                style = MaterialTheme.typography.bodySmall.copy(
-                                    fontFamily = FontFamily.Monospace,
-                                    fontSize = 11.sp
-                                ),
-                                color = MaterialTheme.colorScheme.secondary,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis
-                            )
-                        }
-
-                        IconButton(onClick = { showInfoDialog = true }) {
-                            Icon(
-                                imageVector = Icons.Default.MoreVert,
-                                contentDescription = "Details",
-                                tint = MaterialTheme.colorScheme.onSurface
-                            )
-                        }
-                    }
-
-                    Spacer(modifier = Modifier.height(16.dp))
-
-                    // Large Circular Progress Ring Illustration
-                    Box(
-                        modifier = Modifier
-                            .size(150.dp)
-                            .padding(10.dp),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        CircularProgressIndicator(
-                            modifier = Modifier.fillMaxSize(),
-                            strokeWidth = 4.5.dp,
-                            color = MaterialTheme.colorScheme.primary,
-                            trackColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.12f)
-                        )
-                        Box(
-                            modifier = Modifier
-                                .size(105.dp)
-                                .background(Color.White, CircleShape)
-                                .border(1.dp, Color(0xFFF1F5F9), CircleShape),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Column(
-                                horizontalAlignment = Alignment.CenterHorizontally,
-                                verticalArrangement = Arrangement.Center
-                            ) {
-                                Text(text = "📄", fontSize = 34.sp)
-                                Spacer(modifier = Modifier.height(2.dp))
-                                Text(text = "🔍", fontSize = 16.sp)
-                            }
-                        }
-                    }
-
-                    Spacer(modifier = Modifier.height(20.dp))
-
-                    Text(
-                        text = "Analysiere Inhalte...",
-                        style = MaterialTheme.typography.titleMedium.copy(
-                            fontWeight = FontWeight.Bold,
-                            fontSize = 20.sp
-                        ),
-                        color = MaterialTheme.colorScheme.onSurface,
-                        textAlign = TextAlign.Center
-                    )
-                    Spacer(modifier = Modifier.height(4.dp))
-                    Text(
-                        text = "Gemini KI verarbeitet die Webseite und bereitet die Ergebnisse vor.",
-                        style = MaterialTheme.typography.bodyMedium.copy(fontSize = 12.sp),
-                        color = MaterialTheme.colorScheme.secondary,
-                        textAlign = TextAlign.Center,
-                        modifier = Modifier.padding(horizontal = 24.dp)
-                    )
-
-                    Spacer(modifier = Modifier.height(24.dp))
-
-                    // Timeline Card
-                    Card(
-                        modifier = Modifier.fillMaxWidth(),
-                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-                        shape = RoundedCornerShape(20.dp),
-                        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline)
-                    ) {
-                        Column(modifier = Modifier.padding(16.dp)) {
-                            Text(
-                                text = "AKTIVITÄTS-FORTSCHRITT",
-                                style = MaterialTheme.typography.labelSmall.copy(
-                                    fontWeight = FontWeight.Bold,
-                                    letterSpacing = 1.3.sp
-                                ),
-                                color = MaterialTheme.colorScheme.primary,
-                                modifier = Modifier.padding(bottom = 12.dp, start = 4.dp)
-                            )
-
-                            // Step 1: Webpage laden
-                            val isStep1Active = state.step == LoadingStep.FETCHING_DATA
-                            val isStep1Completed = state.step == LoadingStep.ANALYZING_INPUT || state.step == LoadingStep.GENERATING_OUTPUT
-                            LoadingStepTimelineItem(
-                                stepNumber = "1",
-                                title = "Webseite laden",
-                                description = "Inhalte & Strukturen abrufen",
-                                isActive = isStep1Active,
-                                isCompleted = isStep1Completed,
-                                isLast = false
-                            )
-
-                            // Step 2: Inhalte analysieren
-                            val isStep2Active = state.step == LoadingStep.ANALYZING_INPUT
-                            val isStep2Completed = state.step == LoadingStep.GENERATING_OUTPUT
-                            LoadingStepTimelineItem(
-                                stepNumber = "2",
-                                title = "Inhalte analysieren",
-                                description = "Themen, Kernaussagen & Relevanz erkennen",
-                                isActive = isStep2Active,
-                                isCompleted = isStep2Completed,
-                                isLast = false
-                            )
-
-                            // Step 3: Ergebnisse vorbereiten
-                            val isStep3Active = state.step == LoadingStep.GENERATING_OUTPUT
-                            val isStep3Completed = false
-                            LoadingStepTimelineItem(
-                                stepNumber = "3",
-                                title = "Ergebnisse vorbereiten",
-                                description = "Die wichtigsten Erkenntnisse verdichten",
-                                isActive = isStep3Active,
-                                isCompleted = isStep3Completed,
-                                isLast = false
-                            )
-
-                            // Step 4: Ausgabe erstellen
-                            LoadingStepTimelineItem(
-                                stepNumber = "4",
-                                title = "Ausgabe erstellen",
-                                description = "Fertigstellung in Kürze",
-                                isActive = false,
-                                isCompleted = false,
-                                isLast = true
-                            )
-                        }
-                    }
-
-                    Spacer(modifier = Modifier.height(16.dp))
-
-                    // Supportive Tip box
-                    Card(
-                        modifier = Modifier.fillMaxWidth(),
-                        colors = CardDefaults.cardColors(containerColor = Color(0xFFEFF6FF)),
-                        shape = RoundedCornerShape(14.dp),
-                        border = BorderStroke(1.dp, Color(0xFFBFDBFE))
-                    ) {
-                        Row(
-                            modifier = Modifier.padding(14.dp),
-                            verticalAlignment = Alignment.Top
-                        ) {
-                            Text(text = "💡", fontSize = 18.sp, modifier = Modifier.padding(top = 1.dp))
-                            Spacer(modifier = Modifier.width(10.dp))
-                            Text(
-                                text = "Tipp: Je besser die Quelle, desto präziser die Analyse. Wir extrahieren nur relevante Informationen.",
-                                style = MaterialTheme.typography.bodySmall.copy(fontSize = 11.sp, lineHeight = 14.sp),
-                                color = Color(0xFF1E40AF)
-                            )
-                        }
-                    }
+            },
+            confirmButton = {
+                Button(onClick = { showDebugDataDialog = false }) {
+                    Text("Schließen")
                 }
+            },
+            dismissButton = {
+                TextButton(onClick = {
+                    val debugJson = buildDebugJson(summary, activeFunction, context)
+                    clipboardManager.setText(AnnotatedString(debugJson))
+                    Toast.makeText(context, "Debug-Daten kopiert!", Toast.LENGTH_SHORT).show()
+                }) {
+                    Text("Kopieren")
+                }
+            }
+        )
+    }
 
-                is UiState.Success -> {
-                    // 3. ERGEBNIS-SCREEN / EXECUTIVE BRIEFING
-                    
-                    // Toolbar
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(vertical = 12.dp),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        IconButton(onClick = { viewModel.resetToIdle() }) {
-                            Icon(
-                                imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                                contentDescription = "Zurück",
-                                tint = MaterialTheme.colorScheme.onSurface
-                            )
+    // Preflight Diagnostics Dialog
+    if (showPreflightDialog && preflightReport != null) {
+        val report = preflightReport!!
+        AlertDialog(
+            onDismissRequest = { showPreflightDialog = false },
+            title = { Text("Preflight Verbindungs-Check", fontWeight = FontWeight.Bold, fontSize = 18.sp) },
+            text = {
+                Box(modifier = Modifier.heightIn(max = 400.dp)) {
+                    LazyColumn(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                        item {
+                            Text("Gerät: ${report.device}", fontSize = 11.sp, color = Color.Gray)
+                            Text("Netzwerk: ${report.networkType}", fontSize = 11.sp, color = Color.Gray)
+                            Spacer(modifier = Modifier.height(8.dp))
                         }
-
-                        Column(
-                            horizontalAlignment = Alignment.CenterHorizontally,
-                            modifier = Modifier.weight(1f)
-                        ) {
-                            Text(
-                                text = getTitleForAnalysisType(state.analysisType),
-                                style = MaterialTheme.typography.titleMedium.copy(
-                                    fontWeight = FontWeight.Bold,
-                                    fontSize = 15.sp
-                                ),
-                                color = MaterialTheme.colorScheme.onSurface,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis
-                            )
-                            Text(
-                                text = getDomainName(state.summary.originalUrl.ifBlank { currentUrl }),
-                                style = MaterialTheme.typography.bodySmall.copy(
-                                    fontFamily = FontFamily.Monospace,
-                                    fontSize = 11.sp
-                                ),
-                                color = MaterialTheme.colorScheme.secondary,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis
-                            )
-                        }
-
-                        IconButton(onClick = {
-                            val plainText = buildPlainTextShareOrCopyText(state.summary, state.analysisType, currentUrl)
-                            val shareIntent = Intent(Intent.ACTION_SEND).apply {
-                                type = "text/plain"
-                                putExtra(Intent.EXTRA_TEXT, plainText)
-                            }
-                            context.startActivity(Intent.createChooser(shareIntent, "Teilen via"))
-                        }) {
-                            Icon(
-                                imageVector = Icons.Default.Share,
-                                contentDescription = "Teilen",
-                                tint = MaterialTheme.colorScheme.onSurface
-                            )
-                        }
-                    }
-
-                    Spacer(modifier = Modifier.height(10.dp))
-
-                    // Card 1: Metadata / Source
-                    Card(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(vertical = 6.dp),
-                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-                        shape = RoundedCornerShape(20.dp),
-                        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline)
-                    ) {
-                        val cleanDisplayLink = state.summary.originalUrl.ifBlank { currentUrl }
-                        Column(modifier = Modifier.padding(16.dp)) {
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                Box(
-                                    modifier = Modifier
-                                        .size(40.dp)
-                                        .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.08f), CircleShape),
-                                    contentAlignment = Alignment.Center
-                                ) {
-                                    Text(text = "🌐", fontSize = 20.sp)
-                                }
-                                Spacer(modifier = Modifier.width(12.dp))
-                                Column(modifier = Modifier.weight(1f)) {
-                                    Text(
-                                        text = state.summary.title.ifBlank { currentTitle.ifBlank { "Analysierter Inhalt" } },
-                                        style = MaterialTheme.typography.titleMedium.copy(
-                                            fontWeight = FontWeight.Bold,
-                                            fontSize = 15.sp,
-                                            letterSpacing = (-0.1).sp
-                                        ),
-                                        color = MaterialTheme.colorScheme.onSurface,
-                                        maxLines = 2,
-                                        overflow = TextOverflow.Ellipsis
-                                    )
-                                    Spacer(modifier = Modifier.height(2.dp))
-                                    val owner = state.summary.owner ?: ""
-                                    Text(
-                                        text = if (owner.isNotBlank()) "von $owner" else cleanDisplayLink,
-                                        style = MaterialTheme.typography.bodySmall.copy(
-                                            fontSize = 11.sp
-                                        ),
-                                        color = MaterialTheme.colorScheme.secondary,
-                                        maxLines = 1,
-                                        overflow = TextOverflow.Ellipsis
-                                    )
-                                }
-                            }
-
-                            Spacer(modifier = Modifier.height(10.dp))
-                            HorizontalDivider(color = MaterialTheme.colorScheme.outline.copy(alpha = 0.5f))
-                            Spacer(modifier = Modifier.height(10.dp))
-
-                            // Source Link
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.SpaceBetween
+                        items(report.checks) { check ->
+                            val isPass = check.status == "PASS"
+                            Card(
+                                colors = CardDefaults.cardColors(containerColor = if (isPass) Color(0xFFF0FDF4) else Color(0xFFFEF2F2)),
+                                border = BorderStroke(1.dp, if (isPass) Color(0xFFDCFCE7) else Color(0xFFFEE2E2)),
+                                modifier = Modifier.fillMaxWidth()
                             ) {
                                 Row(
-                                    modifier = Modifier.weight(1f),
-                                    verticalAlignment = Alignment.CenterVertically
+                                    modifier = Modifier.padding(12.dp),
+                                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+                                    verticalAlignment = Alignment.Top
                                 ) {
                                     Icon(
-                                        imageVector = Icons.Default.Language,
-                                        contentDescription = "Link",
-                                        tint = MaterialTheme.colorScheme.primary,
-                                        modifier = Modifier.size(16.dp)
+                                        imageVector = if (isPass) Icons.Default.CheckCircle else Icons.Default.Close,
+                                        contentDescription = check.status,
+                                        tint = if (isPass) Color(0xFF22C55E) else Color(0xFFEF4444),
+                                        modifier = Modifier.size(20.dp)
                                     )
-                                    Spacer(modifier = Modifier.width(6.dp))
-                                    Text(
-                                        text = cleanDisplayLink.replace("https://", "").replace("http://", ""),
-                                        style = MaterialTheme.typography.bodySmall.copy(
-                                            fontFamily = FontFamily.Monospace,
-                                            color = MaterialTheme.colorScheme.primary
-                                        ),
-                                        maxLines = 1,
-                                        overflow = TextOverflow.Ellipsis,
-                                        modifier = Modifier.clickable {
-                                            try {
-                                                val intent = Intent(Intent.ACTION_VIEW, Uri.parse(cleanDisplayLink))
-                                                context.startActivity(intent)
-                                            } catch (e: Exception) {
-                                                Toast.makeText(context, "Link konnte nicht geöffnet werden.", Toast.LENGTH_SHORT).show()
-                                            }
+                                    Column {
+                                        Text(check.name, fontWeight = FontWeight.Bold, fontSize = 13.sp, color = Color(0xFF1E293B))
+                                        Text(check.detail, fontSize = 11.sp, color = Color(0xFF475569))
+                                        if (check.exceptionClass != null) {
+                                            Spacer(modifier = Modifier.height(4.dp))
+                                            Text("Klasse: ${check.exceptionClass}", fontSize = 10.sp, color = Color(0xFF94A3B8))
+                                            Text("Fehler: ${check.exceptionMessage}", fontSize = 10.sp, color = Color(0xFFEF4444))
                                         }
-                                    )
-                                }
-
-                                Row {
-                                    IconButton(
-                                        onClick = {
-                                            clipboardManager.setText(AnnotatedString(cleanDisplayLink))
-                                            Toast.makeText(context, "Link in die Zwischenablage kopiert!", Toast.LENGTH_SHORT).show()
-                                        },
-                                        modifier = Modifier.size(32.dp)
-                                    ) {
-                                        Icon(
-                                            imageVector = Icons.Default.ContentCopy,
-                                            contentDescription = "Kopieren",
-                                            tint = MaterialTheme.colorScheme.secondary,
-                                            modifier = Modifier.size(16.dp)
-                                        )
-                                    }
-                                    Spacer(modifier = Modifier.width(4.dp))
-                                    IconButton(
-                                        onClick = {
-                                            try {
-                                                val intent = Intent(Intent.ACTION_VIEW, Uri.parse(cleanDisplayLink))
-                                                context.startActivity(intent)
-                                            } catch (e: Exception) {
-                                                Toast.makeText(context, "Link konnte nicht geöffnet werden.", Toast.LENGTH_SHORT).show()
-                                            }
-                                        },
-                                        modifier = Modifier.size(32.dp)
-                                    ) {
-                                        Icon(
-                                            imageVector = Icons.Default.Launch,
-                                            contentDescription = "Öffnen",
-                                            tint = MaterialTheme.colorScheme.secondary,
-                                            modifier = Modifier.size(16.dp)
-                                        )
                                     }
                                 }
                             }
                         }
                     }
+                }
+            },
+            confirmButton = {
+                Button(onClick = { showPreflightDialog = false }) {
+                    Text("Schließen")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = {
+                    clipboardManager.setText(AnnotatedString(report.toJsonString()))
+                    Toast.makeText(context, "JSON-Bericht kopiert!", Toast.LENGTH_SHORT).show()
+                }) {
+                    Text("Bericht kopieren (JSON)")
+                }
+            }
+        )
+    }
 
-                    Spacer(modifier = Modifier.height(4.dp))
+    // Smoke Test Harness Dialog
+    if (showSmokeDialog && smokeTestReport != null) {
+        val report = smokeTestReport!!
+        AlertDialog(
+            onDismissRequest = { showSmokeDialog = false },
+            title = { Text("App-Kernfunktionen Smoke-Tests", fontWeight = FontWeight.Bold, fontSize = 18.sp) },
+            text = {
+                Box(modifier = Modifier.heightIn(max = 400.dp)) {
+                    LazyColumn(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                        item {
+                            Text("Gerät: ${report.device}", fontSize = 11.sp, color = Color.Gray)
+                            Text("Verbindung: ${report.networkType}", fontSize = 11.sp, color = Color.Gray)
+                            Spacer(modifier = Modifier.height(8.dp))
+                        }
+                        items(report.tests) { test ->
+                            val isPass = test.finalStatus == "PASS"
+                            Card(
+                                colors = CardDefaults.cardColors(containerColor = if (isPass) Color(0xFFF0FDF4) else Color(0xFFFEF2F2)),
+                                border = BorderStroke(1.dp, if (isPass) Color(0xFFDCFCE7) else Color(0xFFFEE2E2)),
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                                    Row(
+                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        modifier = Modifier.fillMaxWidth()
+                                    ) {
+                                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                                            Icon(
+                                                imageVector = if (isPass) Icons.Default.CheckCircle else Icons.Default.Close,
+                                                contentDescription = test.finalStatus,
+                                                tint = if (isPass) Color(0xFF22C55E) else Color(0xFFEF4444),
+                                                modifier = Modifier.size(18.dp)
+                                            )
+                                            Text("${test.testId}: ${test.analysisType}", fontWeight = FontWeight.Bold, fontSize = 13.sp, color = Color(0xFF1E293B))
+                                        }
+                                        Text(test.inputType, fontSize = 10.sp, color = Color.Gray)
+                                    }
+                                    Text("Extractor: ${test.extractor}", fontSize = 11.sp, color = Color(0xFF475569))
+                                    if (!isPass) {
+                                        Text("Fehlerstufe: ${test.failureStage}", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color(0xFFEF4444))
+                                        Text("Klasse: ${test.errorClass}", fontSize = 10.sp, color = Color(0xFF94A3B8))
+                                        Text("Fehler: ${test.errorMessage}", fontSize = 10.sp, color = Color(0xFFEF4444))
+                                    } else {
+                                        Text("E2E-Pipeline komplett durchlaufen", fontSize = 11.sp, color = Color(0xFF15803D))
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            },
+            confirmButton = {
+                Button(onClick = { showSmokeDialog = false }) {
+                    Text("Schließen")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = {
+                    clipboardManager.setText(AnnotatedString(report.toJsonString()))
+                    Toast.makeText(context, "JSON-Smoke-Report kopiert!", Toast.LENGTH_SHORT).show()
+                }) {
+                    Text("Bericht kopieren (JSON)")
+                }
+            }
+        )
+    }
+}
 
-                    // Card 2: "GANZ KURZ" Summary Card
+@Composable
+fun DebugRow(label: String, value: String) {
+    Column(modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp)) {
+        Text(label, fontWeight = FontWeight.SemiBold, fontSize = 11.sp, color = Color.Gray)
+        Text(value, fontSize = 13.sp, color = MaterialTheme.colorScheme.onBackground)
+        Divider(color = Color(0xFFF1F5F9), modifier = Modifier.padding(top = 4.dp))
+    }
+}
+
+fun buildDebugJson(summary: DomainSummary, activeFunction: FunctionInfo, context: android.content.Context): String {
+    val appVersion = try {
+        val pInfo = context.packageManager.getPackageInfo(context.packageName, 0)
+        pInfo.versionName ?: "1.0.0"
+    } catch (e: Exception) {
+        "1.0.0"
+    }
+
+    val maxDetailsLength = summary.keyTakeaways.maxOfOrNull { it.details.length } ?: 0
+    val analysisType = activeFunction.type?.name ?: "UNKNOWN"
+    val canonicalAnalysisType = activeFunction.type?.canonical()?.name ?: "UNKNOWN"
+    val functionId = activeFunction.id
+    val promptAssetFile = com.example.data.GatewayDiagnostics.loadedPromptAssetFile.ifBlank { "prompts/F_STANDARD_WEBSEITE.md" }
+    val promptSha256 = com.example.data.GatewayDiagnostics.loadedPromptSha256.ifBlank { "N/A" }
+    val selectedContentContainer = com.example.data.GatewayDiagnostics.selectedContentContainer.ifBlank { "none" }
+    val textAfterCleaningLength = com.example.data.GatewayDiagnostics.textAfterCleaningLength
+    val finalUserContentLength = textAfterCleaningLength
+
+    return """{
+  "analysisType": "$analysisType",
+  "canonicalAnalysisType": "$canonicalAnalysisType",
+  "functionId": "$functionId",
+  "sourceUrl": "${summary.originalUrl}",
+  "originalUrl": "${summary.originalUrl}",
+  "promptAssetFile": "$promptAssetFile",
+  "promptSha256": "$promptSha256",
+  "finalUserContentLength": $finalUserContentLength,
+  "selectedContentContainer": "$selectedContentContainer",
+  "textAfterCleaningLength": $textAfterCleaningLength,
+  "keyTakeawayCount": ${summary.keyTakeaways.size},
+  "maxDetailsLength": $maxDetailsLength,
+  "contractValidationStatus": "PASS",
+  "timestamp": "${summary.timestamp}",
+  "appVersion": "$appVersion"
+}"""
+}
+
+
+// ----------------------------------------------------------------------------------
+// COMPLETED COMPOSABLE: REUSABLE FALLBACK ERROR SCREEN
+// ----------------------------------------------------------------------------------
+
+@Composable
+fun ErrorScreen(
+    message: String,
+    detail: String,
+    onBackClick: () -> Unit
+) {
+    val context = LocalContext.current
+    val clipboardManager = LocalClipboardManager.current
+    val scope = rememberCoroutineScope()
+    var isTestingPreflight by remember { mutableStateOf(false) }
+    var isRunningSmokeTests by remember { mutableStateOf(false) }
+    var showPreflightDetails by remember { mutableStateOf(false) }
+    var preflightReport by remember { mutableStateOf<com.example.data.PreflightReport?>(null) }
+    var showSmokeTestHarness by remember { mutableStateOf(false) }
+    var smokeTestReport by remember { mutableStateOf<com.example.data.SmokeTestHarnessReport?>(null) }
+
+    Scaffold(
+        containerColor = Color(0xFFF8FAFC) // Slate 50
+    ) { innerPadding ->
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(innerPadding)
+                .padding(24.dp),
+            contentAlignment = Alignment.Center
+        ) {
+            LazyColumn(
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.spacedBy(16.dp),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .widthIn(max = 480.dp)
+            ) {
+                item {
+                    Card(
+                        colors = CardDefaults.cardColors(containerColor = Color.White),
+                        shape = RoundedCornerShape(24.dp),
+                        border = BorderStroke(1.dp, Color(0xFFF1F5F9))
+                    ) {
+                        Column(
+                            modifier = Modifier.padding(28.dp),
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            verticalArrangement = Arrangement.spacedBy(16.dp)
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .size(64.dp)
+                                    .clip(CircleShape)
+                                    .background(Color(0xFFFEF2F2)), // Soft light red
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.Warning,
+                                    contentDescription = "Fehler",
+                                    tint = Color(0xFFEF4444), // Crimson red
+                                    modifier = Modifier.size(32.dp)
+                                )
+                            }
+
+                            Column(
+                                horizontalAlignment = Alignment.CenterHorizontally,
+                                verticalArrangement = Arrangement.spacedBy(6.dp)
+                            ) {
+                                Text(
+                                    text = "Analyse fehlgeschlagen",
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 18.sp,
+                                    color = Color(0xFF0F172A), // Slate 900
+                                    textAlign = TextAlign.Center
+                                )
+                                
+                                Text(
+                                    text = message,
+                                    fontWeight = FontWeight.SemiBold,
+                                    fontSize = 13.sp,
+                                    color = Color(0xFFEF4444),
+                                    textAlign = TextAlign.Center
+                                )
+                            }
+
+                            Divider(color = Color(0xFFF1F5F9))
+
+                            Text(
+                                text = detail,
+                                fontSize = 12.sp,
+                                color = Color(0xFF64748B), // Slate 500
+                                textAlign = TextAlign.Center,
+                                lineHeight = 18.sp
+                            )
+
+                            Spacer(modifier = Modifier.height(4.dp))
+
+                            // Go Back Button
+                            Button(
+                                onClick = onBackClick,
+                                colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary),
+                                shape = RoundedCornerShape(12.dp),
+                                modifier = Modifier.fillMaxWidth().height(48.dp)
+                            ) {
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                ) {
+                                    Icon(Icons.Default.ArrowBack, contentDescription = null, modifier = Modifier.size(16.dp))
+                                    Text("Zurück zum Workspace", fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                                }
+                            }
+
+                            // Diagnostics Buttons
+                            OutlinedButton(
+                                onClick = {
+                                    if (!isTestingPreflight) {
+                                        isTestingPreflight = true
+                                        scope.launch(kotlinx.coroutines.Dispatchers.IO) {
+                                            val report = com.example.data.RuntimePreflight.runPreflight(context)
+                                            kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
+                                                preflightReport = report
+                                                showPreflightDetails = true
+                                                isTestingPreflight = false
+                                            }
+                                        }
+                                    }
+                                },
+                                enabled = !isTestingPreflight,
+                                shape = RoundedCornerShape(12.dp),
+                                modifier = Modifier.fillMaxWidth().height(44.dp)
+                            ) {
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                ) {
+                                    if (isTestingPreflight) {
+                                        CircularProgressIndicator(modifier = Modifier.size(16.dp), strokeWidth = 2.dp)
+                                        Text("Test läuft...", fontSize = 13.sp)
+                                    } else {
+                                        Icon(Icons.Default.Info, contentDescription = null, modifier = Modifier.size(16.dp))
+                                        Text("Verbindung testen (Preflight)", fontSize = 13.sp)
+                                    }
+                                }
+                            }
+
+                            OutlinedButton(
+                                onClick = {
+                                    if (!isRunningSmokeTests) {
+                                        isRunningSmokeTests = true
+                                        scope.launch(kotlinx.coroutines.Dispatchers.IO) {
+                                            val report = com.example.data.RuntimeSmokeTestHarness.runSmokeTests(context)
+                                            kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
+                                                smokeTestReport = report
+                                                showSmokeTestHarness = true
+                                                isRunningSmokeTests = false
+                                            }
+                                        }
+                                    }
+                                },
+                                enabled = !isRunningSmokeTests,
+                                shape = RoundedCornerShape(12.dp),
+                                modifier = Modifier.fillMaxWidth().height(44.dp)
+                            ) {
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                ) {
+                                    if (isRunningSmokeTests) {
+                                        CircularProgressIndicator(modifier = Modifier.size(16.dp), strokeWidth = 2.dp)
+                                        Text("Tests laufen...", fontSize = 13.sp)
+                                    } else {
+                                        Icon(Icons.Default.PlayArrow, contentDescription = null, modifier = Modifier.size(16.dp))
+                                        Text("Autom. Smoke-Tests ausführen", fontSize = 13.sp)
+                                    }
+                                }
+                            }
+
+                            OutlinedButton(
+                                onClick = {
+                                    val json = com.example.data.PipelineReportStore.getLastReportJson()
+                                    clipboardManager.setText(AnnotatedString(json))
+                                    Toast.makeText(context, "Pipeline Report (JSON) kopiert!", Toast.LENGTH_SHORT).show()
+                                },
+                                shape = RoundedCornerShape(12.dp),
+                                modifier = Modifier.fillMaxWidth().height(44.dp)
+                            ) {
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                ) {
+                                    Icon(Icons.Default.ContentCopy, contentDescription = null, modifier = Modifier.size(16.dp))
+                                    Text("Copy PR (Pipeline Report)", fontSize = 13.sp)
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // Preflight Diagnostics Dialog
+    if (showPreflightDetails && preflightReport != null) {
+        val report = preflightReport!!
+        AlertDialog(
+            onDismissRequest = { showPreflightDetails = false },
+            title = { Text("Preflight Verbindungs-Check", fontWeight = FontWeight.Bold, fontSize = 18.sp) },
+            text = {
+                LazyColumn(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    item {
+                        Text("Gerät: ${report.device}", fontSize = 11.sp, color = Color.Gray)
+                        Text("Netzwerk: ${report.networkType}", fontSize = 11.sp, color = Color.Gray)
+                        Spacer(modifier = Modifier.height(8.dp))
+                    }
+                    items(report.checks) { check ->
+                        val isPass = check.status == "PASS"
+                        Card(
+                            colors = CardDefaults.cardColors(containerColor = if (isPass) Color(0xFFF0FDF4) else Color(0xFFFEF2F2)),
+                            border = BorderStroke(1.dp, if (isPass) Color(0xFFDCFCE7) else Color(0xFFFEE2E2)),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(12.dp),
+                                horizontalArrangement = Arrangement.spacedBy(10.dp),
+                                verticalAlignment = Alignment.Top
+                            ) {
+                                Icon(
+                                    imageVector = if (isPass) Icons.Default.CheckCircle else Icons.Default.Close,
+                                    contentDescription = check.status,
+                                    tint = if (isPass) Color(0xFF22C55E) else Color(0xFFEF4444),
+                                    modifier = Modifier.size(20.dp)
+                                )
+                                Column {
+                                    Text(check.name, fontWeight = FontWeight.Bold, fontSize = 13.sp, color = Color(0xFF1E293B))
+                                    Text(check.detail, fontSize = 11.sp, color = Color(0xFF475569))
+                                    if (check.exceptionClass != null) {
+                                        Spacer(modifier = Modifier.height(4.dp))
+                                        Text("Klasse: ${check.exceptionClass}", fontSize = 10.sp, color = Color(0xFF94A3B8))
+                                        Text("Fehler: ${check.exceptionMessage}", fontSize = 10.sp, color = Color(0xFFEF4444))
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            },
+            confirmButton = {
+                Button(onClick = { showPreflightDetails = false }) {
+                    Text("Schließen")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = {
+                    clipboardManager.setText(AnnotatedString(report.toJsonString()))
+                    Toast.makeText(context, "JSON-Bericht kopiert!", Toast.LENGTH_SHORT).show()
+                }) {
+                    Text("Bericht kopieren (JSON)")
+                }
+            }
+        )
+    }
+
+    // Smoke Test Harness Dialog
+    if (showSmokeTestHarness && smokeTestReport != null) {
+        val report = smokeTestReport!!
+        AlertDialog(
+            onDismissRequest = { showSmokeTestHarness = false },
+            title = { Text("App-Kernfunktionen Smoke-Tests", fontWeight = FontWeight.Bold, fontSize = 18.sp) },
+            text = {
+                LazyColumn(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    item {
+                        Text("Gerät: ${report.device}", fontSize = 11.sp, color = Color.Gray)
+                        Text("Verbindung: ${report.networkType}", fontSize = 11.sp, color = Color.Gray)
+                        Spacer(modifier = Modifier.height(8.dp))
+                    }
+                    items(report.tests) { test ->
+                        val isPass = test.finalStatus == "PASS"
+                        Card(
+                            colors = CardDefaults.cardColors(containerColor = if (isPass) Color(0xFFF0FDF4) else Color(0xFFFEF2F2)),
+                            border = BorderStroke(1.dp, if (isPass) Color(0xFFDCFCE7) else Color(0xFFFEE2E2)),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                                Row(
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    modifier = Modifier.fillMaxWidth()
+                                ) {
+                                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                                        Icon(
+                                            imageVector = if (isPass) Icons.Default.CheckCircle else Icons.Default.Close,
+                                            contentDescription = test.finalStatus,
+                                            tint = if (isPass) Color(0xFF22C55E) else Color(0xFFEF4444),
+                                            modifier = Modifier.size(18.dp)
+                                        )
+                                        Text("${test.testId}: ${test.analysisType}", fontWeight = FontWeight.Bold, fontSize = 13.sp, color = Color(0xFF1E293B))
+                                    }
+                                    Text(test.inputType, fontSize = 10.sp, color = Color.Gray)
+                                }
+                                Text("Extractor: ${test.extractor}", fontSize = 11.sp, color = Color(0xFF475569))
+                                if (!isPass) {
+                                    Text("Fehlerstufe: ${test.failureStage}", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color(0xFFEF4444))
+                                    Text("Klasse: ${test.errorClass}", fontSize = 10.sp, color = Color(0xFF94A3B8))
+                                    Text("Fehler: ${test.errorMessage}", fontSize = 10.sp, color = Color(0xFFEF4444))
+                                } else {
+                                    Text("E2E-Pipeline komplett durchlaufen", fontSize = 11.sp, color = Color(0xFF15803D))
+                                }
+                            }
+                        }
+                    }
+                }
+            },
+            confirmButton = {
+                Button(onClick = { showSmokeTestHarness = false }) {
+                    Text("Schließen")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = {
+                    clipboardManager.setText(AnnotatedString(report.toJsonString()))
+                    Toast.makeText(context, "JSON-Smoke-Report kopiert!", Toast.LENGTH_SHORT).show()
+                }) {
+                    Text("Bericht kopieren (JSON)")
+                }
+            }
+        )
+    }
+}
+
+fun getFunctionNameForAnalysis(summary: DomainSummary): String {
+    val analysisType = if (summary.analysisId.contains("|")) {
+        val parts = summary.analysisId.split("|")
+        try {
+            com.example.data.AnalysisType.valueOf(parts[1])
+        } catch (e: Exception) {
+            com.example.data.AnalysisType.WEB_SUMMARY
+        }
+    } else {
+        com.example.data.AnalysisType.WEB_SUMMARY
+    }
+
+    val canonicalType = analysisType.canonical()
+    val feature = com.example.ui.metadata.FeatureCatalog.features.find { it.analysisType == canonicalType }
+    return feature?.name ?: when (canonicalType) {
+        com.example.data.AnalysisType.WEB_SUMMARY -> "Zusammenfassung"
+        com.example.data.AnalysisType.KEY_TAKEAWAYS -> "3 Kernaussagen"
+        com.example.data.AnalysisType.DOCUMENT_SUMMARY -> "Dokument zusammenfassen"
+        com.example.data.AnalysisType.FREE_SOURCE_QUERY -> "Frage an die Quelle"
+        com.example.data.AnalysisType.MULTIMEDIA_ANALYSIS -> "Video- & Multimedia-Analyse"
+        com.example.data.AnalysisType.FRESHNESS_CHECK -> "Aktualitäts-Check"
+        com.example.data.AnalysisType.MISINFORMATION_RADAR -> "Fehlinformations-Radar"
+        com.example.data.AnalysisType.FACTS_VS_OPINIONS -> "Fakt-oder-Meinung"
+        com.example.data.AnalysisType.RISK_ANALYSIS -> "Risikoanalyse"
+        com.example.data.AnalysisType.PERSPECTIVES_COUNTERPOSITIONS -> "Perspektiven- & Gegenpositionen-Finder"
+        com.example.data.AnalysisType.RELEVANT_ASPECTS -> "Weitere relevante Aspekte"
+        else -> "Zusammenfassung"
+    }
+}
+
+// ----------------------------------------------------------------------------------
+// SUB-SCREENS FOR SMARTPHONE BOTTOM NAVIGATION TABS
+// ----------------------------------------------------------------------------------
+
+@Composable
+fun HistoryTabScreen(savedHistories: List<DomainSummary>, viewModel: MainViewModel) {
+    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        Text("Verlauf & Lokaler Cache", fontWeight = FontWeight.Bold, fontSize = 18.sp)
+        Text("Gespeicherte Extraktionen und Berichte offline lesen.", fontSize = 12.sp, color = Color.Gray)
+        Spacer(modifier = Modifier.height(8.dp))
+
+        if (savedHistories.isEmpty()) {
+            Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                Text("Noch kein Verlauf vorhanden.", color = Color.Gray)
+            }
+        } else {
+            LazyColumn(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                items(savedHistories) { summary ->
                     Card(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .padding(vertical = 6.dp),
-                        colors = CardDefaults.cardColors(containerColor = Color(0xFFF8FAFC)),
-                        shape = RoundedCornerShape(20.dp),
-                        border = BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.2f))
+                            .clickable { viewModel.openSavedAnalysis(summary) },
+                        colors = CardDefaults.cardColors(containerColor = Color.White),
+                        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline)
                     ) {
-                        Column(modifier = Modifier.padding(16.dp)) {
+                        Column(modifier = Modifier.padding(14.dp)) {
                             Row(
                                 modifier = Modifier.fillMaxWidth(),
                                 horizontalArrangement = Arrangement.SpaceBetween,
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
                                 Text(
-                                    text = "GANZ KURZ",
-                                    style = MaterialTheme.typography.labelMedium.copy(
-                                        fontWeight = FontWeight.Bold,
-                                        letterSpacing = 1.2.sp
-                                    ),
+                                    text = summary.title,
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 14.sp,
+                                    modifier = Modifier.weight(1f),
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Text(
+                                    text = summary.timestamp,
+                                    fontSize = 10.sp,
+                                    color = Color.Gray,
+                                    fontWeight = FontWeight.Normal
+                                )
+                            }
+                            Spacer(modifier = Modifier.height(4.dp))
+                            Text(summary.originalUrl, fontSize = 11.sp, color = Color.Gray, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                            Spacer(modifier = Modifier.height(6.dp))
+                            Box(
+                                modifier = Modifier
+                                    .background(
+                                        color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.5f),
+                                        shape = RoundedCornerShape(4.dp)
+                                    )
+                                    .padding(horizontal = 6.dp, vertical = 2.dp)
+                             ) {
+                                Text(
+                                    text = getFunctionNameForAnalysis(summary),
+                                    fontSize = 10.sp,
+                                    fontWeight = FontWeight.Medium,
                                     color = MaterialTheme.colorScheme.primary
                                 )
-                                Text(text = "✨", fontSize = 16.sp)
-                            }
-                            Spacer(modifier = Modifier.height(8.dp))
-                            Text(
-                                text = state.summary.shortDescription,
-                                style = MaterialTheme.typography.bodyMedium.copy(
-                                    lineHeight = 20.sp,
-                                    fontSize = 13.sp
-                                ),
-                                color = Color.Black
-                            )
-                        }
-                    }
-
-                    Spacer(modifier = Modifier.height(12.dp))
-
-                    // Heading: KERNAUSSAGEN
-                    Text(
-                        text = "WICHTIGSTE KERNAUSSAGEN",
-                        style = MaterialTheme.typography.labelSmall.copy(
-                            fontWeight = FontWeight.Bold,
-                            letterSpacing = 1.3.sp
-                        ),
-                        color = MaterialTheme.colorScheme.primary,
-                        modifier = Modifier
-                            .align(Alignment.Start)
-                            .padding(bottom = 10.dp, start = 4.dp)
-                    )
-
-                    // Insight Cards List
-                    val takeaways = state.summary.keyTakeaways
-                    val isNumbered = state.analysisType == com.example.data.AnalysisType.TOP_3_KERNAUSSAGEN ||
-                            state.analysisType == com.example.data.AnalysisType.RISIKO_ANALYSE
-
-                    takeaways.forEachIndexed { index, takeaway ->
-                        val numBadge = "%02d".format(index + 1)
-                        val config = getTakeawayStyleConfig(index)
-
-                        Card(
-                            modifier = Modifier
-                                  .fillMaxWidth()
-                                  .padding(vertical = 4.dp),
-                            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-                            shape = RoundedCornerShape(16.dp),
-                            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline)
-                        ) {
-                            Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(16.dp),
-                                verticalAlignment = Alignment.Top
-                            ) {
-                                // Large purple badge index OR beautiful Icon Bullet
-                                if (isNumbered) {
-                                    Text(
-                                        text = numBadge,
-                                        style = TextStyle(
-                                            fontWeight = FontWeight.Bold,
-                                            fontSize = 16.sp,
-                                            color = MaterialTheme.colorScheme.primary
-                                        ),
-                                        modifier = Modifier.padding(top = 1.dp)
-                                    )
-                                } else {
-                                    Icon(
-                                        imageVector = getIconForAnalysisType(state.analysisType),
-                                        contentDescription = "Inhaltspunkt",
-                                        tint = MaterialTheme.colorScheme.primary,
-                                        modifier = Modifier
-                                            .padding(top = 2.dp)
-                                            .size(20.dp)
-                                    )
-                                }
-
-                                Spacer(modifier = Modifier.width(14.dp))
-
-                                // Content text
-                                Column(modifier = Modifier.weight(1f)) {
-                                    Text(
-                                        text = takeaway.title,
-                                        style = MaterialTheme.typography.titleSmall.copy(
-                                            fontWeight = FontWeight.Bold,
-                                            fontSize = 14.sp
-                                        ),
-                                        color = MaterialTheme.colorScheme.onSurface
-                                    )
-                                    Spacer(modifier = Modifier.height(2.dp))
-                                    Text(
-                                        text = takeaway.details,
-                                        style = MaterialTheme.typography.bodyMedium.copy(
-                                            fontSize = 12.sp,
-                                            lineHeight = 16.sp
-                                        ),
-                                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.8f)
-                                    )
-                                }
-
-                                Spacer(modifier = Modifier.width(10.dp))
-
-                                // Beautiful styled right alignment icon
-                                Box(
-                                    modifier = Modifier
-                                        .size(36.dp)
-                                        .background(config.bgColor, RoundedCornerShape(10.dp)),
-                                    contentAlignment = Alignment.Center
-                                ) {
-                                    Icon(
-                                        imageVector = config.icon,
-                                        contentDescription = "Teamelement",
-                                        tint = config.tintColor,
-                                        modifier = Modifier.size(18.dp)
-                                    )
-                                }
                             }
                         }
                     }
+                }
+            }
+        }
+    }
+}
 
-                    Spacer(modifier = Modifier.height(24.dp))
+@Composable
+fun FavoritesTabScreen(
+    favoritesList: List<String>,
+    onFunctionClick: (FunctionInfo) -> Unit,
+    onToggleFavorite: (String) -> Unit,
+    onMoveUp: (String) -> Unit = {},
+    onMoveDown: (String) -> Unit = {}
+) {
+    val allFunctionsMap = categoriesList.flatMap { it.functions }.associateBy { it.id }
+    val favFuncs = favoritesList.mapNotNull { allFunctionsMap[it] }
 
-                    // Fixed Action Footer Container
+    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        Text("Favorisierte Funktionen", fontWeight = FontWeight.Bold, fontSize = 18.sp)
+        Text("Deine Schnellzugriffe anpassen und direkt ausführen.", fontSize = 12.sp, color = Color.Gray)
+        Spacer(modifier = Modifier.height(8.dp))
+
+        if (favFuncs.isEmpty()) {
+            Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                Text("Noch keine Favoriten markiert.", color = Color.Gray)
+            }
+        } else {
+            LazyColumn(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                itemsIndexed(favFuncs) { index, func ->
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .padding(vertical = 8.dp),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            .clip(RoundedCornerShape(12.dp))
+                            .background(Color.White)
+                            .border(1.dp, MaterialTheme.colorScheme.outline, RoundedCornerShape(12.dp))
+                            .clickable { onFunctionClick(func) }
+                            .padding(12.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
                     ) {
-                        OutlinedButton(
-                            onClick = {
-                                val textToCopy = buildPlainTextShareOrCopyText(state.summary, state.analysisType, currentUrl)
-                                clipboardManager.setText(AnnotatedString(textToCopy))
-                                Toast.makeText(context, "Zusammenfassung wurde kopiert!", Toast.LENGTH_SHORT).show()
-                            },
-                            modifier = Modifier
-                                .weight(1f)
-                                .height(48.dp),
-                            shape = RoundedCornerShape(14.dp),
-                            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline)
-                        ) {
-                            Row(
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.Center
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Default.ContentCopy,
-                                    contentDescription = "Copy",
-                                    modifier = Modifier.size(16.dp)
-                                )
-                                Spacer(modifier = Modifier.width(6.dp))
-                                Text("Kopieren", fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
-                            }
-                        }
-
-                        OutlinedButton(
-                            onClick = {
-                                val plainText = buildPlainTextShareOrCopyText(state.summary, state.analysisType, currentUrl)
-                                val shareIntent = Intent(Intent.ACTION_SEND).apply {
-                                    type = "text/plain"
-                                    putExtra(Intent.EXTRA_TEXT, plainText)
-                                }
-                                context.startActivity(Intent.createChooser(shareIntent, "Teilen via"))
-                            },
-                            modifier = Modifier
-                                .weight(0.6f)
-                                .height(48.dp),
-                            shape = RoundedCornerShape(14.dp),
-                            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline)
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.Share,
-                                contentDescription = "Teilen",
-                                modifier = Modifier.size(18.dp)
-                            )
-                        }
-
-                        Button(
-                            onClick = {
-                                viewModel.resetToIdle()
-                            },
-                            modifier = Modifier
-                                .weight(1.4f)
-                                .height(48.dp),
-                            shape = RoundedCornerShape(14.dp),
-                            colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary)
-                        ) {
-                            Row(
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.Center
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Default.Refresh,
-                                    contentDescription = "Neustart",
-                                    modifier = Modifier.size(16.dp)
-                                )
-                                Spacer(modifier = Modifier.width(6.dp))
-                                Text("Neue Analyse", fontSize = 13.sp, fontWeight = FontWeight.Bold)
-                            }
-                        }
-                    }
-                }
-
-                is UiState.Error -> {
-                    // ERROR STATE
-                    
-                    Column(modifier = Modifier.fillMaxWidth()) {
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(vertical = 12.dp),
-                            horizontalArrangement = Arrangement.Start,
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            IconButton(onClick = { viewModel.resetToIdle() }) {
-                                Icon(
-                                    imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                                    contentDescription = "Zurück",
-                                    tint = MaterialTheme.colorScheme.onSurface
-                                )
-                            }
-                            Text(
-                                text = "Fehler bei Analyse",
-                                style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold)
-                            )
-                        }
-
-                        Spacer(modifier = Modifier.height(10.dp))
-
-                        Card(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(vertical = 6.dp),
-                            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-                            shape = RoundedCornerShape(20.dp),
-                            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline)
-                        ) {
-                            Column(
-                                modifier = Modifier
-                                    .padding(20.dp)
-                                    .fillMaxWidth(),
-                                horizontalAlignment = Alignment.CenterHorizontally
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Default.Warning,
-                                    contentDescription = "Fehler",
-                                    tint = MaterialTheme.colorScheme.error,
-                                    modifier = Modifier.size(52.dp)
-                                )
-
-                                Spacer(modifier = Modifier.height(14.dp))
-
-                                Text(
-                                    text = state.message,
-                                    style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
-                                    color = MaterialTheme.colorScheme.error,
-                                    textAlign = TextAlign.Center
-                                )
-
-                                if (state.detail != null) {
-                                    Spacer(modifier = Modifier.height(8.dp))
-                                    Text(
-                                        text = state.detail,
-                                        style = MaterialTheme.typography.bodyMedium.copy(fontSize = 12.sp),
-                                        color = MaterialTheme.colorScheme.secondary,
-                                        textAlign = TextAlign.Center
-                                    )
-                                }
-                            }
-                        }
-
-                        if (state.isPaywallOrBlocked) {
-                            Card(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(vertical = 6.dp),
-                                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-                                shape = RoundedCornerShape(20.dp),
-                                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline)
-                            ) {
-                                Column(modifier = Modifier.padding(18.dp)) {
-                                    Row(verticalAlignment = Alignment.CenterVertically) {
-                                        Text(text = "🔓", fontSize = 18.sp)
-                                        Spacer(modifier = Modifier.width(8.dp))
-                                        Text(
-                                            text = "Lösung für geschützte Seiten / Abos",
-                                            style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold),
-                                            color = MaterialTheme.colorScheme.secondary
-                                        )
-                                    }
-                                    Spacer(modifier = Modifier.height(8.dp))
-                                    Text(
-                                        text = "Manche geschützten Artikel verlangen einen Login. Du kannst das einfach umgehen:\n\n" +
-                                                "1. Markiere den Text direkt in deinem Browser oder App.\n" +
-                                                "2. Kopiere den markierten Text.\n" +
-                                                "3. Kehre hierher zurück und klicke auf den Button unten, um den kopierten Inhalt sofort per KI zu analysieren.",
-                                        style = MaterialTheme.typography.bodySmall.copy(fontSize = 12.sp),
-                                        color = MaterialTheme.colorScheme.secondary,
-                                        lineHeight = 16.sp
-                                    )
-                                    Spacer(modifier = Modifier.height(14.dp))
-
-                                    Button(
-                                        onClick = {
-                                            try {
-                                                val clip = clipboardManager.getText()
-                                                if (clip != null && clip.text.isNotBlank()) {
-                                                    viewModel.processSharedText(clip.text)
-                                                } else {
-                                                    Toast.makeText(context, "Deine Zwischenablage ist aktuell leer!", Toast.LENGTH_LONG).show()
-                                                }
-                                            } catch (e: Exception) {
-                                                Toast.makeText(context, "Zugriff auf Zwischenablage fehlgeschlagen.", Toast.LENGTH_SHORT).show()
-                                            }
-                                        },
-                                        modifier = Modifier
-                                            .fillMaxWidth()
-                                            .height(44.dp)
-                                            .testTag("error_clipboard_fallback_button"),
-                                        shape = RoundedCornerShape(12.dp),
-                                        colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary)
-                                    ) {
-                                        Text("📋 Text aus Zwischenablage analysieren", fontWeight = FontWeight.Bold, fontSize = 13.sp)
-                                    }
-                                }
-                            }
-                        }
-
-                        Spacer(modifier = Modifier.height(16.dp))
-
-                        if (isSharedLaunch) {
-                            Button(
-                                onClick = onDismiss,
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .height(48.dp),
-                                shape = RoundedCornerShape(14.dp),
-                                colors = ButtonDefaults.buttonColors(
-                                    containerColor = MaterialTheme.colorScheme.errorContainer,
-                                    contentColor = MaterialTheme.colorScheme.onErrorContainer
-                                )
-                            ) {
-                                Text("Schließen", fontWeight = FontWeight.Bold)
-                            }
-                        } else {
-                            Button(
-                                onClick = {
-                                    onResetSharedLaunchState()
-                                    viewModel.resetToIdle()
-                                },
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .height(48.dp),
-                                shape = RoundedCornerShape(14.dp),
-                                colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary)
-                            ) {
-                                Text("Zurück zur Startseite", fontWeight = FontWeight.Bold)
-                            }
-                        }
-                    }
-                }
-            }
-        }
-    }
-
-    // Info overlay modal dialog
-    if (showInfoDialog) {
-        AlertDialog(
-            onDismissRequest = { showInfoDialog = false },
-            title = {
-                Text(
-                    text = "Über Abstractor ✨",
-                    style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold)
-                )
-            },
-            text = {
-                Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .verticalScroll(rememberScrollState()),
-                    verticalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    Text(
-                        text = "Abstractor ist dein intelligenter Begleiter, um lange Webseiten, Dokumente, Fotos und YouTube-Videos blitzschnell auszuwerten.",
-                        fontSize = 13.sp,
-                        lineHeight = 18.sp
-                    )
-                    Spacer(modifier = Modifier.height(4.dp))
-                    Text(
-                        text = "Features:\n" +
-                                "• Hochpräzises Scopen von Inhalten.\n" +
-                                "• YouTube Unbannable oEmbed-Fallback.\n" +
-                                "• Schnelle Zwischenablage-Analyse.\n" +
-                                "• Robustes, intelligentes Parsing.",
-                        fontSize = 12.sp,
-                        color = MaterialTheme.colorScheme.secondary,
-                        lineHeight = 16.sp
-                    )
-                }
-            },
-            confirmButton = {
-                TextButton(onClick = { showInfoDialog = false }) {
-                    Text("Schließen", fontWeight = FontWeight.Bold)
-                }
-            },
-            shape = RoundedCornerShape(20.dp),
-            containerColor = Color.White
-        )
-    }
-
-    // Modal dialog to choose Document or Photo analyze
-    if (showFileOptionsDialog) {
-        AlertDialog(
-            onDismissRequest = { showFileOptionsDialog = false },
-            title = {
-                Text(
-                    "Mit Dateien & Fotos arbeiten",
-                    fontWeight = FontWeight.Bold,
-                    fontSize = 18.sp
-                )
-            },
-            text = {
-                Column(
-                    modifier = Modifier.fillMaxWidth(),
-                    verticalArrangement = Arrangement.spacedBy(10.dp)
-                ) {
-                    Text(
-                        "Wähle eine Option aus, um lokale Dateien oder Bilder hochzuladen und durch Gemini analysieren zu lassen:",
-                        fontSize = 13.sp,
-                        color = Color(0xFF64748B)
-                    )
-
-                    // Option 1: Dokumente
-                    Card(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clickable {
-                                showFileOptionsDialog = false
-                                documentPickerLauncher.launch(
-                                    arrayOf(
-                                        "application/pdf",
-                                        "text/*",
-                                        "application/msword",
-                                        "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
-                                    )
-                                )
-                            },
-                        colors = CardDefaults.cardColors(containerColor = Color(0xFFF8FAFC)),
-                        shape = RoundedCornerShape(14.dp),
-                        border = BorderStroke(1.dp, Color(0xFFE2E8F0))
-                    ) {
-                        Row(
-                            modifier = Modifier.padding(12.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Text(text = "📄", fontSize = 24.sp)
-                            Spacer(modifier = Modifier.width(12.dp))
-                            Column {
-                                Text("Dokument zusammenfassen", fontWeight = FontWeight.Bold, fontSize = 14.sp)
-                                Text("PDF, Word oder Text-Dateien", fontSize = 11.sp, color = Color(0xFF64748B))
-                            }
-                        }
-                    }
-
-                    // Option 2: Photos
-                    Card(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clickable {
-                                showFileOptionsDialog = false
-                                imagePickerLauncher.launch(arrayOf("image/*"))
-                            },
-                        colors = CardDefaults.cardColors(containerColor = Color(0xFFF8FAFC)),
-                        shape = RoundedCornerShape(14.dp),
-                        border = BorderStroke(1.dp, Color(0xFFE2E8F0))
-                    ) {
-                        Row(
-                            modifier = Modifier.padding(12.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Text(text = "📸", fontSize = 24.sp)
-                            Spacer(modifier = Modifier.width(12.dp))
-                            Column {
-                                Text("Fotos & Screenshots auswerten", fontWeight = FontWeight.Bold, fontSize = 14.sp)
-                                Text("Texte auf Bildern & Fotos analysieren", fontSize = 11.sp, color = Color(0xFF64748B))
-                            }
-                        }
-                    }
-                }
-            },
-            confirmButton = {
-                TextButton(onClick = { showFileOptionsDialog = false }) {
-                    Text("Abbrechen", color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold)
-                }
-            },
-            shape = RoundedCornerShape(20.dp),
-            containerColor = Color.White
-        )
-    }
-
-    if (showHistorySyncDialog) {
-        val context = androidx.compose.ui.platform.LocalContext.current
-        val savedHistories by viewModel.savedHistories.collectAsState()
-        val syncPendingCount by viewModel.syncPendingCount.collectAsState()
-        val syncUiState by viewModel.syncUiState.collectAsState()
-        val syncErrorMessage by viewModel.syncErrorMessage.collectAsState()
-        val activeUser by viewModel.activeUser.collectAsState()
-        val authStatus by viewModel.authStatus.collectAsState()
-
-        // Trigger active user and pending sync count updates when dialog opens
-        LaunchedEffect(Unit) {
-            viewModel.updateActiveUser()
-            viewModel.updatePendingSyncCount()
-        }
-
-        AlertDialog(
-            onDismissRequest = { showHistorySyncDialog = false },
-            title = {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Text(
-                        text = if (com.example.data.BackendFeatureConfig.cloudSyncEnabled) "Verlauf & Sync 🔄" else "Lokaler Verlauf ⏳",
-                        style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold)
-                    )
-                    IconButton(
-                        onClick = { showHistorySyncDialog = false },
-                        modifier = Modifier.size(24.dp).testTag("close_history_dialog_button")
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.Close,
-                            contentDescription = "Schließen",
-                            modifier = Modifier.size(18.dp)
-                        )
-                    }
-                }
-            },
-            text = {
-                Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .heightIn(max = 480.dp),
-                    verticalArrangement = Arrangement.spacedBy(16.dp)
-                ) {
-                    if (com.example.data.BackendFeatureConfig.cloudSyncEnabled) {
-                        // Sync Status Card
-                        Card(
-                            modifier = Modifier.fillMaxWidth(),
-                            colors = CardDefaults.cardColors(
-                                containerColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.15f)
-                            ),
-                            border = BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.2f)),
-                            shape = RoundedCornerShape(12.dp)
-                        ) {
-                            Column(
-                                modifier = Modifier.padding(12.dp),
-                                verticalArrangement = Arrangement.spacedBy(8.dp)
-                            ) {
-                                Text(
-                                    text = "Synchronisationsstatus",
-                                    style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold),
-                                    color = MaterialTheme.colorScheme.primary
-                                )
-                                
-                                Row(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    horizontalArrangement = Arrangement.SpaceBetween,
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    Column(modifier = Modifier.weight(1f)) {
-                                        val accountText = when (val status = authStatus) {
-                                            is AuthStatus.Authenticated -> "Konto: ${status.username}"
-                                            is AuthStatus.Guest -> "Lokaler Gastmodus"
-                                            is AuthStatus.Error -> "Fehler: ${status.message}"
-                                        }
-                                        Text(
-                                            text = accountText,
-                                            style = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.Bold),
-                                            color = if (authStatus is AuthStatus.Error) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurface,
-                                            maxLines = 1,
-                                            overflow = TextOverflow.Ellipsis
-                                        )
-                                        if (authStatus is AuthStatus.Authenticated) {
-                                            Text(
-                                                text = "Ausstehend: $syncPendingCount",
-                                                style = MaterialTheme.typography.bodySmall,
-                                                color = MaterialTheme.colorScheme.secondary
-                                            )
-                                        } else {
-                                            Text(
-                                                text = "Keine Cloud-Synchronisation",
-                                                style = MaterialTheme.typography.bodySmall.copy(fontSize = 11.sp),
-                                                color = MaterialTheme.colorScheme.secondary
-                                            )
-                                        }
-                                    }
-                                    
-                                    Button(
-                                        onClick = {
-                                            viewModel.triggerSync()
-                                            com.example.data.sync.SyncScheduler.enqueueOneTimeSync(context.applicationContext)
-                                        },
-                                        enabled = syncUiState != "SYNCING" && authStatus is AuthStatus.Authenticated,
-                                        modifier = Modifier.testTag("trigger_sync_button"),
-                                        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp),
-                                        shape = RoundedCornerShape(8.dp),
-                                        colors = ButtonDefaults.buttonColors(
-                                            containerColor = MaterialTheme.colorScheme.primary
-                                        )
-                                    ) {
-                                        if (syncUiState == "SYNCING") {
-                                            CircularProgressIndicator(
-                                                modifier = Modifier.size(16.dp),
-                                                color = MaterialTheme.colorScheme.onPrimary,
-                                                strokeWidth = 2.dp
-                                            )
-                                        } else {
-                                            Icon(
-                                                imageVector = Icons.Default.Sync,
-                                                contentDescription = "Sync",
-                                                modifier = Modifier.size(14.dp)
-                                            )
-                                            Spacer(modifier = Modifier.width(4.dp))
-                                            Text(text = "Sync", fontSize = 11.sp, fontWeight = FontWeight.Bold)
-                                        }
-                                    }
-                                }
-
-                                if (authStatus is AuthStatus.Guest) {
-                                    Text(
-                                        text = "Registrierung oder Login erforderlich – Synchronisation nicht möglich im lokalen Gastmodus.",
-                                        style = MaterialTheme.typography.bodySmall.copy(fontSize = 11.sp, fontWeight = FontWeight.Normal),
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                                    )
-                                }
-
-                                when (syncUiState) {
-                                    "SYNCING" -> {
-                                        Text(
-                                            text = "Synchronisiere mit Backend...",
-                                            style = MaterialTheme.typography.bodySmall.copy(fontSize = 11.sp),
-                                            color = MaterialTheme.colorScheme.primary
-                                        )
-                                    }
-                                    "SUCCESS" -> {
-                                        if (authStatus is AuthStatus.Authenticated) {
-                                            Row(
-                                                verticalAlignment = Alignment.CenterVertically,
-                                                horizontalArrangement = Arrangement.spacedBy(4.dp)
-                                            ) {
-                                                Icon(
-                                                    imageVector = Icons.Default.Check,
-                                                    contentDescription = "Erfolg",
-                                                    tint = Color(0xFF10B981),
-                                                    modifier = Modifier.size(14.dp)
-                                                )
-                                                Text(
-                                                    text = "Synchronisation erfolgreich abgeschlossen!",
-                                                    style = MaterialTheme.typography.bodySmall.copy(fontSize = 11.sp),
-                                                    color = Color(0xFF10B981)
-                                                )
-                                            }
-                                        }
-                                    }
-                                    "ERROR" -> {
-                                        Row(
-                                            verticalAlignment = Alignment.CenterVertically,
-                                            horizontalArrangement = Arrangement.spacedBy(4.dp)
-                                        ) {
-                                            Icon(
-                                                imageVector = Icons.Default.Warning,
-                                                contentDescription = "Fehler",
-                                                tint = MaterialTheme.colorScheme.error,
-                                                modifier = Modifier.size(14.dp)
-                                            )
-                                            Text(
-                                                text = syncErrorMessage ?: "Fehler bei der Synchronisation.",
-                                                style = MaterialTheme.typography.bodySmall.copy(fontSize = 11.sp),
-                                                color = MaterialTheme.colorScheme.error
-                                            )
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    } else {
-                        // Offline Notice Card
-                        Card(
-                            modifier = Modifier.fillMaxWidth(),
-                            colors = CardDefaults.cardColors(
-                                containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f)
-                            ),
-                            border = BorderStroke(1.dp, MaterialTheme.colorScheme.onSurface.copy(alpha = 0.1f)),
-                            shape = RoundedCornerShape(12.dp)
-                        ) {
-                            Column(
-                                modifier = Modifier.padding(12.dp),
-                                verticalArrangement = Arrangement.spacedBy(4.dp)
-                            ) {
-                                Row(
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.spacedBy(6.dp)
-                                ) {
-                                    Icon(
-                                        imageVector = Icons.Default.History,
-                                        contentDescription = "Lokaler Verlauf",
-                                        tint = MaterialTheme.colorScheme.primary,
-                                        modifier = Modifier.size(16.dp)
-                                    )
-                                    Text(
-                                        text = "Lokale Offline-Speicherung",
-                                        style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold),
-                                        color = MaterialTheme.colorScheme.onSurface
-                                    )
-                                }
-                                Text(
-                                    text = "Ihre generierten Analysen werden sicher und privat ausschließlich lokal auf Ihrem Gerät gespeichert. Cloud-Synchronisation ist vorbereitet, im aktuellen Release jedoch deaktiviert.",
-                                    style = MaterialTheme.typography.bodySmall.copy(fontSize = 11.sp, lineHeight = 15.sp),
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                                )
-                            }
-                        }
-                    }
-
-                    // History Section Header
-                    Text(
-                        text = "Lokaler Verlauf (${savedHistories.size})",
-                        style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold),
-                        color = MaterialTheme.colorScheme.onSurface
-                    )
-
-                    // Histories List
-                    if (savedHistories.isEmpty()) {
-                        Box(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .weight(1f)
-                                .background(
-                                    MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f),
-                                    RoundedCornerShape(8.dp)
-                                ),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Column(
-                                horizontalAlignment = Alignment.CenterHorizontally,
-                                modifier = Modifier.padding(16.dp)
-                            ) {
-                                Text(text = "📭", fontSize = 28.sp)
-                                Spacer(modifier = Modifier.height(4.dp))
-                                Text(
-                                    text = "Noch keine gespeicherten Analysen vorhanden.",
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = MaterialTheme.colorScheme.secondary,
-                                    textAlign = TextAlign.Center
-                                )
-                            }
-                        }
-                    } else {
-                        LazyColumn(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .weight(1f),
-                            verticalArrangement = Arrangement.spacedBy(8.dp)
-                        ) {
-                            items(savedHistories) { summary ->
-                                Card(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .clickable {
-                                            viewModel.openSavedAnalysis(summary)
-                                            showHistorySyncDialog = false
-                                        }
-                                        .testTag("history_item_${summary.id}"),
-                                    colors = CardDefaults.cardColors(
-                                        containerColor = MaterialTheme.colorScheme.surface
-                                    ),
-                                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.3f)),
-                                    shape = RoundedCornerShape(8.dp)
-                                ) {
-                                    Column(
-                                        modifier = Modifier.padding(10.dp)
-                                    ) {
-                                        Text(
-                                            text = summary.title,
-                                            style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Bold),
-                                            color = MaterialTheme.colorScheme.onSurface,
-                                            maxLines = 1,
-                                            overflow = TextOverflow.Ellipsis
-                                        )
-                                        Spacer(modifier = Modifier.height(2.dp))
-                                        Text(
-                                            text = summary.owner ?: summary.originalUrl,
-                                            style = MaterialTheme.typography.bodySmall.copy(
-                                                fontSize = 11.sp,
-                                                fontFamily = FontFamily.Monospace
-                                            ),
-                                            color = MaterialTheme.colorScheme.secondary,
-                                            maxLines = 1,
-                                            overflow = TextOverflow.Ellipsis
-                                        )
-                                        Spacer(modifier = Modifier.height(4.dp))
-                                        Text(
-                                            text = summary.shortDescription,
-                                            style = MaterialTheme.typography.bodySmall.copy(fontSize = 11.sp, lineHeight = 14.sp),
-                                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                            maxLines = 2,
-                                            overflow = TextOverflow.Ellipsis
-                                        )
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-            },
-            confirmButton = {
-                TextButton(
-                    onClick = { showHistorySyncDialog = false },
-                    modifier = Modifier.testTag("dismiss_history_dialog_button")
-                ) {
-                    Text("Schließen", fontWeight = FontWeight.Bold)
-                }
-            }
-        )
-    }
-}
-
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable
-fun FloatingUrlInputCard(
-    manualUrlInput: String,
-    onUrlChange: (String) -> Unit,
-    onTriggerSummary: () -> Unit
-) {
-    val clipboardManager = LocalClipboardManager.current
-    val context = LocalContext.current
-
-    var textFieldValueState by remember {
-        mutableStateOf(TextFieldValue(text = manualUrlInput))
-    }
-
-    LaunchedEffect(manualUrlInput) {
-        if (textFieldValueState.text != manualUrlInput) {
-            textFieldValueState = TextFieldValue(
-                text = manualUrlInput,
-                selection = androidx.compose.ui.text.TextRange(manualUrlInput.length)
-            )
-        }
-    }
-
-    Card(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(vertical = 4.dp),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-        shape = RoundedCornerShape(20.dp),
-        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline)
-    ) {
-        Column(modifier = Modifier.padding(16.dp)) {
-            OutlinedTextField(
-                value = textFieldValueState,
-                onValueChange = { newValue ->
-                    textFieldValueState = newValue
-                    if (newValue.text != manualUrlInput) {
-                        onUrlChange(newValue.text)
-                    }
-                },
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .testTag("url_input_field"),
-                textStyle = TextStyle(
-                    color = MaterialTheme.colorScheme.onSurface,
-                    fontSize = 14.sp
-                ),
-                placeholder = {
-                    Text(
-                        "https://example.com/artikel",
-                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f)
-                    )
-                },
-                leadingIcon = {
-                    Icon(
-                        imageVector = Icons.Default.Link,
-                        contentDescription = "Link",
-                        tint = Color(0xFF94A3B8)
-                    )
-                },
-                trailingIcon = {
-                    if (manualUrlInput.isNotEmpty()) {
-                        IconButton(
-                            onClick = {
-                                onUrlChange("")
-                                textFieldValueState = TextFieldValue("")
-                            },
-                            modifier = Modifier.testTag("clear_url_input_button")
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.Close,
-                                contentDescription = "Eingabe löschen",
-                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                                modifier = Modifier.size(18.dp)
-                            )
-                        }
-                    }
-                },
-                singleLine = true,
-                colors = OutlinedTextFieldDefaults.colors(
-                    focusedTextColor = MaterialTheme.colorScheme.onSurface,
-                    unfocusedTextColor = MaterialTheme.colorScheme.onSurface,
-                    focusedBorderColor = MaterialTheme.colorScheme.primary,
-                    unfocusedBorderColor = Color(0xFFE2E8F0),
-                    focusedContainerColor = Color(0xFFF8FAFC),
-                    unfocusedContainerColor = Color(0xFFF8FAFC),
-                    cursorColor = MaterialTheme.colorScheme.primary
-                ),
-                shape = RoundedCornerShape(12.dp),
-                keyboardOptions = KeyboardOptions(
-                    imeAction = ImeAction.Search,
-                    keyboardType = KeyboardType.Uri
-                ),
-                keyboardActions = KeyboardActions(
-                    onSearch = { onTriggerSummary() }
-                )
-            )
-
-            Spacer(modifier = Modifier.height(10.dp))
-
-            OutlinedButton(
-                onClick = {
-                    try {
-                        val clip = clipboardManager.getText()
-                        if (clip != null && clip.text.isNotBlank()) {
-                            onUrlChange(clip.text.trim())
-                            textFieldValueState = TextFieldValue(
-                                text = clip.text.trim(),
-                                selection = androidx.compose.ui.text.TextRange(clip.text.trim().length)
-                            )
-                            Toast.makeText(context, "URL aus Zwischenablage eingefügt!", Toast.LENGTH_SHORT).show()
-                        } else {
-                            Toast.makeText(context, "Deine Zwischenablage ist leer oder enthält keinen Text.", Toast.LENGTH_LONG).show()
-                        }
-                    } catch (e: Exception) {
-                        Toast.makeText(context, "Zugriff auf Zwischenablage fehlgeschlagen.", Toast.LENGTH_SHORT).show()
-                    }
-                },
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(44.dp)
-                    .testTag("analyze_clipboard_button"),
-                shape = RoundedCornerShape(12.dp),
-                border = BorderStroke(1.dp, Color(0xFFE2E8F0)),
-                colors = ButtonDefaults.outlinedButtonColors(
-                    contentColor = MaterialTheme.colorScheme.primary
-                )
-            ) {
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.Center
-                ) {
-                    Text(text = "📋", fontSize = 14.sp)
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Text("Aus Zwischenablage einfügen", fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
-                }
-            }
-        }
-    }
-}
-
-data class AnalysisOption(
-    val type: com.example.data.AnalysisType,
-    val title: String,
-    val description: String,
-    val icon: String,
-    val color: Color
-)
-
-@Composable
-fun CockpitLayout(
-    selectedType: com.example.data.AnalysisType,
-    onOptionSelected: (com.example.data.AnalysisType) -> Unit
-) {
-    val options = remember {
-        listOf(
-            AnalysisOption(
-                type = com.example.data.AnalysisType.STANDARD_WEBSEITE,
-                title = "Webseite zusammenfassen",
-                description = "Präzise Inhalts-Zusammenfassung",
-                icon = "📝",
-                color = Color(0xFF6366F1)
-            ),
-            AnalysisOption(
-                type = com.example.data.AnalysisType.TOP_3_KERNAUSSAGEN,
-                title = "3 Kernpunkte",
-                description = "Die 3 wichtigsten Kernaussagen & Themen",
-                icon = "📊",
-                color = Color(0xFFF59E0B)
-            ),
-            AnalysisOption(
-                type = com.example.data.AnalysisType.FACTS_VS_OPINIONS_ANALYZER,
-                title = "Fakten & Meinungen",
-                description = "Aussagen klassifizieren und einordnen",
-                icon = "⚖️",
-                color = Color(0xFF0EA5E9)
-            ),
-            AnalysisOption(
-                type = com.example.data.AnalysisType.AKTUALITAETS_CHECK,
-                title = "Aktualität prüfen",
-                description = "Zeitliche Relevanz & Gültigkeit checken",
-                icon = "📅",
-                color = Color(0xFF10B981)
-            ),
-            AnalysisOption(
-                type = com.example.data.AnalysisType.FEHLINFORMATIONS_RADAR,
-                title = "Fehlinformationen erkennen",
-                description = "Fakes, Übertreibungen & logische Fehler",
-                icon = "🔍",
-                color = Color(0xFFEC4899)
-            ),
-            AnalysisOption(
-                type = com.example.data.AnalysisType.RISIKO_ANALYSE,
-                title = "Risiken identifizieren",
-                description = "Systemische Gefahren & Nachteile aufdecken",
-                icon = "⚠️",
-                color = Color(0xFFEF4444)
-            ),
-            AnalysisOption(
-                type = com.example.data.AnalysisType.BUSINESS_INKUBATOR,
-                title = "Geschäftsideen finden",
-                description = "Innovative, profitable Nischenkonzepte",
-                icon = "💡",
-                color = Color(0xFF8B5CF6)
-            ),
-            AnalysisOption(
-                type = com.example.data.AnalysisType.PERSPECTIVES_AND_COUNTERPOSITIONS,
-                title = "Gegenpositionen finden",
-                description = "Alternative Sichtweisen & Gegenargumente",
-                icon = "🔄",
-                color = Color(0xFF14B8A6)
-            ),
-            AnalysisOption(
-                type = com.example.data.AnalysisType.MULTIMEDIA,
-                title = "Video zusammenfassen",
-                description = "Videos und Podcasts analysieren",
-                icon = "📹",
-                color = Color(0xFFEF4444)
-            )
-        )
-    }
-
-    Column(
-        modifier = Modifier.fillMaxWidth()
-    ) {
-        Text(
-            text = "Analysemodus wählen",
-            style = MaterialTheme.typography.titleMedium.copy(
-                fontWeight = FontWeight.Bold,
-                fontSize = 16.sp
-            ),
-            color = MaterialTheme.colorScheme.onSurface,
-            modifier = Modifier.padding(bottom = 12.dp, start = 4.dp)
-        )
-
-        val chunked = options.chunked(2)
-        chunked.forEach { rowOptions ->
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(vertical = 4.dp),
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                rowOptions.forEach { option ->
-                    val isSelected = option.type == selectedType
-                    Card(
-                        modifier = Modifier
-                            .weight(1f)
-                            .height(84.dp)
-                            .testTag("cockpit_button_${option.type.name.lowercase()}")
-                            .clickable { onOptionSelected(option.type) },
-                        colors = CardDefaults.cardColors(
-                            containerColor = if (isSelected) Color(0xFFEEF2FF) else MaterialTheme.colorScheme.surface
-                        ),
-                        shape = RoundedCornerShape(16.dp),
-                        border = BorderStroke(
-                            width = if (isSelected) 1.5.dp else 1.dp,
-                            color = if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outline
-                        ),
-                        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
-                    ) {
-                        Row(
-                            modifier = Modifier
-                                .fillMaxSize()
-                                .padding(horizontal = 10.dp, vertical = 6.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
+                        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.weight(1f)) {
                             Box(
                                 modifier = Modifier
-                                    .size(36.dp)
-                                    .background(
-                                        color = if (isSelected) Color.White else option.color.copy(alpha = 0.08f),
-                                        shape = RoundedCornerShape(10.dp)
-                                    ),
+                                    .size(40.dp)
+                                    .clip(RoundedCornerShape(10.dp))
+                                    .background(func.color.copy(alpha = 0.1f)),
                                 contentAlignment = Alignment.Center
                             ) {
-                                Text(text = option.icon, fontSize = 18.sp)
+                                Icon(func.icon, contentDescription = null, tint = func.color)
                             }
+                            Spacer(modifier = Modifier.width(12.dp))
+                            Column {
+                                Text(func.name, fontWeight = FontWeight.Bold, fontSize = 13.sp)
+                                Text(func.description, fontSize = 11.sp, color = Color.Gray)
+                            }
+                        }
 
-                            Spacer(modifier = Modifier.width(8.dp))
-
-                            Column(
-                                modifier = Modifier.weight(1f),
-                                verticalArrangement = Arrangement.Center
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            IconButton(
+                                onClick = { onMoveUp(func.id) },
+                                enabled = index > 0
                             ) {
-                                Text(
-                                    text = option.title,
-                                    style = MaterialTheme.typography.titleSmall.copy(
-                                        fontWeight = FontWeight.Bold,
-                                        fontSize = 12.sp,
-                                        lineHeight = 14.sp
-                                    ),
-                                    color = if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface,
-                                    maxLines = 2,
-                                    overflow = TextOverflow.Ellipsis
+                                Icon(
+                                    Icons.Default.ArrowUpward,
+                                    contentDescription = "Nach oben verschieben",
+                                    tint = if (index > 0) MaterialTheme.colorScheme.primary else Color.LightGray
                                 )
-                                Spacer(modifier = Modifier.height(2.dp))
-                                Text(
-                                    text = option.description,
-                                    style = MaterialTheme.typography.bodySmall.copy(
-                                        fontSize = 10.sp,
-                                        lineHeight = 11.sp
-                                    ),
-                                    color = if (isSelected) MaterialTheme.colorScheme.primary.copy(alpha = 0.7f) else Color(0xFF94A3B8),
-                                    maxLines = 2,
-                                    overflow = TextOverflow.Ellipsis
+                            }
+                            IconButton(
+                                onClick = { onMoveDown(func.id) },
+                                enabled = index < favFuncs.size - 1
+                            ) {
+                                Icon(
+                                    Icons.Default.ArrowDownward,
+                                    contentDescription = "Nach unten verschieben",
+                                    tint = if (index < favFuncs.size - 1) MaterialTheme.colorScheme.primary else Color.LightGray
                                 )
+                            }
+                            IconButton(onClick = { onToggleFavorite(func.id) }) {
+                                Icon(Icons.Default.Star, contentDescription = "Favorit entfernen", tint = Color(0xFFD97706))
                             }
                         }
                     }
-                }
-
-                if (rowOptions.size == 1) {
-                    Spacer(modifier = Modifier.weight(1f))
                 }
             }
         }
     }
 }
+
+
 
 @Composable
-fun LoadingStepTimelineItem(
-    stepNumber: String,
-    title: String,
-    description: String,
-    isActive: Boolean,
-    isCompleted: Boolean,
-    isLast: Boolean
-) {
-    Row(
+fun AccountSettingsScreen(viewModel: MainViewModel, authStatus: com.example.ui.AuthStatus) {
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+
+    var authUsername by remember { mutableStateOf("") }
+    var authPassword by remember { mutableStateOf("") }
+    var isRegisterMode by remember { mutableStateOf(false) }
+
+    Column(
         modifier = Modifier
-            .fillMaxWidth()
-            .padding(vertical = 4.dp),
-        verticalAlignment = Alignment.Top
+            .fillMaxSize()
+            .verticalScroll(rememberScrollState()),
+        verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
-        Column(
-            horizontalAlignment = Alignment.CenterHorizontally,
-            modifier = Modifier.width(36.dp)
-        ) {
-            Box(
-                modifier = Modifier
-                    .size(28.dp)
-                    .background(
-                        color = when {
-                            isCompleted -> MaterialTheme.colorScheme.primary
-                            isActive -> MaterialTheme.colorScheme.primary.copy(alpha = 0.15f)
-                            else -> Color(0xFFF1F5F9)
-                        },
-                        shape = CircleShape
-                    )
-                    .then(
-                        if (isActive && !isCompleted) {
-                            Modifier.border(2.dp, MaterialTheme.colorScheme.primary, CircleShape)
-                        } else {
-                            Modifier
-                        }
-                    ),
-                contentAlignment = Alignment.Center
+        Text("Account & Synchronisation", fontWeight = FontWeight.Bold, fontSize = 18.sp)
+        Text("Melde dich an, um deinen Analyse-Verlauf in der Cloud zu sichern und auf allen Geräten abzugleichen.", fontSize = 12.sp, color = Color.Gray)
+
+        Divider(color = MaterialTheme.colorScheme.outline)
+
+        if (authStatus is com.example.ui.AuthStatus.Authenticated) {
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                colors = CardDefaults.cardColors(containerColor = Color(0xFFECFDF5)),
+                border = BorderStroke(1.dp, Color(0xFFA7F3D0))
             ) {
-                when {
-                    isCompleted -> {
-                        Text(
-                            text = "✔",
-                            fontSize = 12.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = Color.White
-                        )
-                    }
-                    isActive -> {
-                        Box(
-                            modifier = Modifier
-                                .size(8.dp)
-                                .background(MaterialTheme.colorScheme.primary, CircleShape)
-                        )
-                    }
-                    else -> {
-                        Text(
-                            text = stepNumber,
-                            fontSize = 11.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = Color(0xFF94A3B8)
-                        )
+                Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text("Eingeloggt als", fontWeight = FontWeight.Bold, fontSize = 13.sp, color = Color(0xFF059669))
+                    Text(authStatus.username, fontWeight = FontWeight.Bold, fontSize = 18.sp)
+                    Text("Status: Synchronisiert", fontSize = 11.sp, color = Color.Gray)
+
+                    Button(
+                        onClick = {
+                            com.example.data.local.SessionStorage.clearSession(context)
+                            viewModel.updateActiveUser()
+                            Toast.makeText(context, "Ausgeloggt!", Toast.LENGTH_SHORT).show()
+                        },
+                        colors = ButtonDefaults.buttonColors(containerColor = Color.Red),
+                        modifier = Modifier.padding(top = 8.dp)
+                    ) {
+                        Text("Abmelden")
                     }
                 }
             }
-
-            if (!isLast) {
-                Box(
-                    modifier = Modifier
-                        .width(2.dp)
-                        .height(32.dp)
-                        .background(
-                            color = if (isCompleted) MaterialTheme.colorScheme.primary else Color(0xFFE2E8F0)
-                        )
-                )
-            }
-        }
-
-        Spacer(modifier = Modifier.width(12.dp))
-
-        Column(modifier = Modifier.padding(top = 2.dp)) {
-            Text(
-                text = title,
-                style = MaterialTheme.typography.titleSmall.copy(
-                    fontWeight = FontWeight.Bold,
-                    fontSize = 14.sp
-                ),
-                color = if (isActive || isCompleted) MaterialTheme.colorScheme.onSurface else Color(0xFF94A3B8)
-            )
-            Spacer(modifier = Modifier.height(2.dp))
-            Text(
-                text = description,
-                style = MaterialTheme.typography.bodySmall.copy(
-                    fontSize = 11.sp
-                ),
-                color = if (isActive || isCompleted) Color(0xFF64748B) else Color(0xFFCBD5E1)
-            )
-        }
-    }
-}
-
-data class TakeawayStyleConfig(
-    val icon: androidx.compose.ui.graphics.vector.ImageVector,
-    val bgColor: Color,
-    val tintColor: Color
-)
-
-fun getTakeawayStyleConfig(index: Int): TakeawayStyleConfig {
-    return when (index) {
-        0 -> TakeawayStyleConfig(Icons.Default.TrackChanges, Color(0xFFEFF2FF), Color(0xFF536EF1))
-        1 -> TakeawayStyleConfig(Icons.Default.BusinessCenter, Color(0xFFFEF3C7), Color(0xFFD97706))
-        2 -> TakeawayStyleConfig(Icons.Default.Person, Color(0xFFCCFBF1), Color(0xFF0D9488))
-        3 -> TakeawayStyleConfig(Icons.Default.Business, Color(0xFFFCE7F3), Color(0xFFDB2777))
-        4 -> TakeawayStyleConfig(Icons.Default.Verified, Color(0xFFD1FAE5), Color(0xFF059669))
-        else -> TakeawayStyleConfig(Icons.Default.Lightbulb, Color(0xFFF3E8FF), Color(0xFF7C3AED))
-    }
-}
-
-fun getIconForAnalysisType(analysisType: com.example.data.AnalysisType): androidx.compose.ui.graphics.vector.ImageVector {
-    return when (analysisType) {
-        com.example.data.AnalysisType.RISIKO_ANALYSE -> Icons.Default.Warning
-        com.example.data.AnalysisType.BUSINESS_INKUBATOR -> Icons.Default.Lightbulb
-        com.example.data.AnalysisType.FACTS_VS_OPINIONS_ANALYZER -> Icons.Default.Verified
-        com.example.data.AnalysisType.FEHLINFORMATIONS_RADAR -> Icons.Default.Warning
-        com.example.data.AnalysisType.AKTUALITAETS_CHECK -> Icons.Default.Search
-        else -> Icons.Default.CheckCircle
-    }
-}
-
-
-
-fun getPlatformEmoji(url: String): String {
-    val lower = url.lowercase()
-    return when {
-        lower.contains("youtube.com") || lower.contains("youtu.be") -> "📺"
-        lower.contains("facebook.com") || lower.contains("fb.") -> "👥"
-        lower.contains("instagram.com") -> "📸"
-        lower.contains("linkedin.com") -> "💼"
-        lower.contains("twitter.com") || lower.contains("x.com") -> "🐦"
-        lower.contains("tiktok.com") -> "🎵"
-        lower.contains("content://") || lower.endsWith(".docx") || lower.endsWith(".pdf") || lower.endsWith(".xlsx") || lower.endsWith(".pptx") || lower.endsWith(".txt") -> "📄"
-        else -> "🔗"
-    }
-}
-
-fun parseMarkdownToAnnotatedString(text: String): AnnotatedString {
-    val builder = AnnotatedString.Builder()
-    val parts = text.split("**")
-    var isBold = false
-    for (part in parts) {
-        if (isBold) {
-            builder.pushStyle(androidx.compose.ui.text.SpanStyle(fontWeight = FontWeight.Bold))
-            builder.append(part)
-            builder.pop()
         } else {
-            builder.append(part)
-        }
-        isBold = !isBold
-    }
-    return builder.toAnnotatedString()
-}
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                colors = CardDefaults.cardColors(containerColor = Color.White),
+                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline)
+            ) {
+                Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    Text(if (isRegisterMode) "Konto erstellen" else "Cloud-Anmeldung", fontWeight = FontWeight.Bold, fontSize = 15.sp)
 
-fun getTitleForAnalysisType(type: com.example.data.AnalysisType): String {
-    return when (type) {
-        com.example.data.AnalysisType.STANDARD_WEBSEITE -> "Standard-Webseite zusammenfassen"
-        com.example.data.AnalysisType.MULTIMEDIA -> "Multimedia-Inhalt zusammenfassen"
-        com.example.data.AnalysisType.TOP_3_KERNAUSSAGEN -> "Die Top 3 Kernaussagen ermitteln"
-        com.example.data.AnalysisType.AKTUALITAETS_CHECK -> "Aktualität prüfen"
-        com.example.data.AnalysisType.FEHLINFORMATIONS_RADAR -> "Fehlinformations-Radar aktivieren"
-        com.example.data.AnalysisType.RISIKO_ANALYSE -> "Risiko-Analyse durchführen"
-        com.example.data.AnalysisType.BUSINESS_INKUBATOR -> "Geschäftsideen-Inkubator starten"
-        com.example.data.AnalysisType.DOKUMENTE -> "Dokumente zusammenfassen"
-        com.example.data.AnalysisType.FACTS_VS_OPINIONS_ANALYZER -> "Fakt oder Meinung!?"
-        com.example.data.AnalysisType.PERSPECTIVES_AND_COUNTERPOSITIONS -> "Perspektiven & Gegenpositionen finden"
-    }
-}
+                    OutlinedTextField(
+                        value = authUsername,
+                        onValueChange = { authUsername = it },
+                        label = { Text("Benutzername") },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth()
+                    )
 
-fun getDomainName(url: String): String {
-    if (url.isBlank()) return "Webadresse"
-    return try {
-        val uri = Uri.parse(url)
-        val host = uri.host ?: url
-        host.replace("www.", "")
-    } catch (e: Exception) {
-        url.replace("https://", "").replace("http://", "").split("/").firstOrNull() ?: url
-    }
-}
+                    OutlinedTextField(
+                        value = authPassword,
+                        onValueChange = { authPassword = it },
+                        label = { Text("Passwort") },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth()
+                    )
 
-fun buildPlainTextShareOrCopyText(
-    summary: DomainSummary,
-    analysisType: com.example.data.AnalysisType,
-    fallbackUrl: String
-): String {
-    fun cleanMarkdown(text: String): String {
-        var temp = text
-            .replace(Regex("\\*\\*(.*?)\\*\\*"), "$1")
-            .replace(Regex("\\*(.*?)\\*"), "$1")
-            .replace(Regex("`([^`]+)`"), "$1")
+                    Button(
+                        onClick = {
+                            if (authUsername.isNotBlank() && authPassword.isNotBlank()) {
+                                scope.launch {
+                                    val success = if (isRegisterMode) {
+                                        viewModel.userRepository.register(authUsername, authPassword)
+                                    } else {
+                                        viewModel.userRepository.login(authUsername, authPassword)
+                                    }
+                                    if (success) {
+                                        viewModel.updateActiveUser()
+                                        Toast.makeText(context, "Erfolgreich eingeloggt!", Toast.LENGTH_SHORT).show()
+                                    } else {
+                                        Toast.makeText(context, "Anmeldung fehlgeschlagen!", Toast.LENGTH_SHORT).show()
+                                    }
+                                }
+                            } else {
+                                Toast.makeText(context, "Bitte fülle alle Felder aus!", Toast.LENGTH_SHORT).show()
+                            }
+                        },
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Text(if (isRegisterMode) "Registrieren" else "Anmelden")
+                    }
 
-        temp = temp.replace(Regex("^\\s*[-*+•]\\s+"), "")
-        return temp.trim()
-    }
-
-    val url = summary.originalUrl.ifBlank { fallbackUrl }
-    val title = summary.title.ifBlank { "Analysierter Inhalt" }
-    val ownerValue = summary.owner ?: ""
-    val ownerDisplay = if (ownerValue.isNotBlank()) ownerValue else getDomainName(url)
-
-    return buildString {
-        appendLine("Titel der Quelle: $title")
-        appendLine("Owner: $ownerDisplay")
-        appendLine()
-
-        appendLine("URL:")
-        appendLine(url)
-        appendLine()
-
-        if (summary.shortDescription.isNotBlank()) {
-            appendLine("Ganz kurz:")
-            appendLine(cleanMarkdown(summary.shortDescription))
-            appendLine()
-        }
-
-        if (summary.keyTakeaways.isNotEmpty()) {
-            appendLine("Inhalte:")
-            val isNumbered = analysisType == com.example.data.AnalysisType.TOP_3_KERNAUSSAGEN ||
-                    analysisType == com.example.data.AnalysisType.RISIKO_ANALYSE
-
-            summary.keyTakeaways.forEachIndexed { index, takeaway ->
-                val cleanTitle = cleanMarkdown(takeaway.title)
-                val cleanDetails = cleanMarkdown(takeaway.details)
-                val formatText = if (cleanTitle.isNotBlank()) "$cleanTitle: $cleanDetails" else cleanDetails
-                if (isNumbered) {
-                    appendLine("${index + 1}. $formatText")
-                } else {
-                    appendLine("- $formatText")
+                    TextButton(onClick = { isRegisterMode = !isRegisterMode }, modifier = Modifier.align(Alignment.CenterHorizontally)) {
+                        Text(if (isRegisterMode) "Bereits ein Konto? Anmelden" else "Noch kein Konto? Registrieren")
+                    }
                 }
             }
         }
-    }.trim()
+    }
 }

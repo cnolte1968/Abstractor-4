@@ -2,92 +2,117 @@ package com.example.data
 
 import com.squareup.moshi.Json
 import com.squareup.moshi.JsonClass
+import retrofit2.http.Body
+import retrofit2.http.POST
+import retrofit2.http.Path
+import retrofit2.http.Query
 
-object GeminiModelConfig {
-    // Phase 6: Central model constants for Gemini text generation
-    // gemini-1.5-flash is now unsupported (throws 404 NOT_FOUND).
-    // gemini-3.5-flash is brand new and currently overloaded (throws 503 SERVICE_UNAVAILABLE / high demand).
-    // gemini-2.5-flash is the modern, highly performant, and stable production-ready model.
-    const val TEXT_MODEL = "gemini-2.5-flash"
-    
-    // Fallback model used if the primary model fails or experiences transient issues
-    const val FALLBACK_MODEL = "gemini-3.5-flash"
-    
-    // Phase 3 Build diagnostic constant to prove current build execution
-    const val ABSTRACTOR_BUILD_DIAGNOSTIC = "model-check-2026-06-11"
-}
-
-enum class AnalysisType {
-    STANDARD_WEBSEITE,
-    MULTIMEDIA,
-    DOKUMENTE,
-    TOP_3_KERNAUSSAGEN,
-    AKTUALITAETS_CHECK,
-    FEHLINFORMATIONS_RADAR,
-    RISIKO_ANALYSE,
-    BUSINESS_INKUBATOR,
-    FACTS_VS_OPINIONS_ANALYZER,
-    PERSPECTIVES_AND_COUNTERPOSITIONS
-}
-
-@JsonClass(generateAdapter = false)
-data class GenerateContentRequest(
-    @param:Json(name = "contents") val contents: List<Content>,
-    @param:Json(name = "generationConfig") val generationConfig: GenerationConfig? = null,
-    @param:Json(name = "tools") val tools: List<Tool>? = null,
-    @param:Json(name = "systemInstruction") val systemInstruction: Content? = null
+@JsonClass(generateAdapter = true)
+data class Blob(
+    @Json(name = "mime_type") val mimeType: String,
+    val data: String
 )
 
-@JsonClass(generateAdapter = false)
-data class Content(
-    @param:Json(name = "parts") val parts: List<Part>
-)
-
-@JsonClass(generateAdapter = false)
+@JsonClass(generateAdapter = true)
 data class Part(
-    @param:Json(name = "text") val text: String? = null,
-    @param:Json(name = "inlineData") val inlineData: InlineData? = null
+    val text: String? = null,
+    @Json(name = "inline_data") val inlineData: Blob? = null
 )
 
-@JsonClass(generateAdapter = false)
-data class InlineData(
-    @param:Json(name = "mimeType") val mimeType: String,
-    @param:Json(name = "data") val data: String
+@JsonClass(generateAdapter = true)
+data class Content(
+    val parts: List<Part>,
+    val role: String? = null
 )
 
-@JsonClass(generateAdapter = false)
-data class Tool(
-    @param:Json(name = "googleSearch") val googleSearch: Map<String, String>? = null
-)
-
-@JsonClass(generateAdapter = false)
-data class GenerationConfig(
-    @param:Json(name = "responseMimeType") val responseMimeType: String? = null,
-    @param:Json(name = "responseSchema") val responseSchema: ResponseSchema? = null,
-    @param:Json(name = "temperature") val temperature: Double? = null,
-    @param:Json(name = "maxOutputTokens") val maxOutputTokens: Int? = null
-)
-
-@JsonClass(generateAdapter = false)
-data class ResponseSchema(
-    @param:Json(name = "type") val type: String = "OBJECT",
-    @param:Json(name = "properties") val properties: Map<String, SchemaProperty>? = null,
-    @param:Json(name = "required") val required: List<String>? = null
-)
-
-@JsonClass(generateAdapter = false)
+@JsonClass(generateAdapter = true)
 data class SchemaProperty(
-    @param:Json(name = "type") val type: String, // "STRING", "ARRAY"
-    @param:Json(name = "description") val description: String? = null,
-    @param:Json(name = "items") val items: SchemaProperty? = null
+    val type: String,
+    val description: String? = null,
+    val items: SchemaProperty? = null,
+    val properties: Map<String, SchemaProperty>? = null,
+    val required: List<String>? = null
 )
 
-@JsonClass(generateAdapter = false)
-data class GenerateContentResponse(
-    @param:Json(name = "candidates") val candidates: List<Candidate>? = null
+@JsonClass(generateAdapter = true)
+data class ResponseSchema(
+    val type: String,
+    val properties: Map<String, SchemaProperty>? = null,
+    val required: List<String>? = null,
+    val items: SchemaProperty? = null
 )
 
-@JsonClass(generateAdapter = false)
+@JsonClass(generateAdapter = true)
+data class GenerationConfig(
+    @Json(name = "response_mime_type") val responseMimeType: String? = null,
+    @Json(name = "response_schema") val responseSchema: ResponseSchema? = null,
+    val temperature: Double? = null,
+    @Json(name = "max_output_tokens") val maxOutputTokens: Int? = null
+)
+
+@JsonClass(generateAdapter = true)
+data class Tool(
+    @Json(name = "googleSearch") val googleSearch: Map<String, Any>? = null
+)
+
+@JsonClass(generateAdapter = true)
+data class GenerateContentRequest(
+    val contents: List<Content>,
+    val generationConfig: GenerationConfig? = null,
+    val tools: List<Tool>? = null,
+    @Json(name = "system_instruction") val systemInstruction: Content? = null
+)
+
+@JsonClass(generateAdapter = true)
 data class Candidate(
-    @param:Json(name = "content") val content: Content? = null
+    val content: Content? = null
 )
+
+@JsonClass(generateAdapter = true)
+data class GenerateContentResponse(
+    val candidates: List<Candidate>? = null
+)
+
+@JsonClass(generateAdapter = true)
+data class RelevantorSummary(
+    val title: String,
+    @Json(name = "original_url") val originalUrl: String,
+    @Json(name = "short_description") val shortDescription: String,
+    @Json(name = "key_takeaways") val keyTakeaways: List<String>,
+    val owner: String? = null
+)
+
+@JsonClass(generateAdapter = true)
+data class JsonTakeawayObject(
+    val title: String?,
+    val details: String?,
+    @Json(name = "visual_metadata") val visualMetadataSnake: Map<String, Any>? = null,
+    @Json(name = "visualMetadata") val visualMetadataCamel: Map<String, Any>? = null
+)
+
+@JsonClass(generateAdapter = true)
+data class JsonSummaryWithObjects(
+    val title: String?,
+    @Json(name = "original_url") val originalUrl: String?,
+    @Json(name = "short_description") val shortDescription: String?,
+    @Json(name = "key_takeaways") val keyTakeaways: List<JsonTakeawayObject>?,
+    val owner: String? = null
+)
+
+@JsonClass(generateAdapter = true)
+data class JsonSummaryWithStrings(
+    val title: String?,
+    @Json(name = "original_url") val originalUrl: String?,
+    @Json(name = "short_description") val shortDescription: String?,
+    @Json(name = "key_takeaways") val keyTakeaways: List<String>?,
+    val owner: String? = null
+)
+
+interface GeminiApiService {
+    @POST("v1beta/models/{model}:generateContent")
+    suspend fun generateContent(
+        @Path("model") model: String,
+        @Query("key") apiKey: String,
+        @Body request: GenerateContentRequest
+    ): GenerateContentResponse
+}

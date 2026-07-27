@@ -1,17 +1,17 @@
-# TECHNISCHE SYSTEMSPEZIFIKATION & ARCHITEKTUR-ANALYSE (ABSTRACTOR-CORE)
+# TECHNISCHE SYSTEMSPEZIFIKATION & ARCHITEKTUR-ANALYSE (RELEVANTOR-CORE)
 
-Dieses Dokument bietet eine lückenlose, faktenbasierte und tiefgehende technische Spezifikation des bestehenden Abstractor-Systems. Es dient als exaktes Referenzdokument für künftige Entwicklungsphasen (insb. Entkopplung von Prompt Engine, Parser-Logik und UI-Rendermodulen).
+Dieses Dokument bietet eine lückenlose, faktenbasierte und tiefgehende technische Spezifikation des bestehenden Relevantor-Systems. Es dient als exaktes Referenzdokument für künftige Entwicklungsphasen (insb. Entkopplung von Prompt Engine, Parser-Logik und UI-Rendermodulen).
 
 ---
 
 ## 1. Systemübersicht
-Die **Abstractor-App** ist eine hoch-optimierte Android-Anwendung, die strukturierte und unstrukturierte Quellmedien (Webseiten, YouTube-Transkripte, lokale Dokumente oder Freitexte) erfasst, mithilfe der Google Gemini API analysiert und in eine visuell strukturierte, mobiloptimierte Listenansicht (Jetpack Compose) überführt.
+Die **Relevantor-App** ist eine hoch-optimierte Android-Anwendung, die strukturierte und unstrukturierte Quellmedien (Webseiten, YouTube-Transkripte, lokale Dokumente oder Freitexte) erfasst, mithilfe der Google Gemini API analysiert und in eine visuell strukturierte, mobiloptimierte Listenansicht (Jetpack Compose) überführt.
 
 Die funktionale Trennung im System ist wie folgt aufgebaut:
 * **Assets / Prompts:** Deklarative Markdown- und JSON-Dateien im Asset-Verzeichnis zur Steuerung der sprachlichen und strukturellen Erwartungshaltung gegenüber der Gemini-Schnittstelle.
 * **Prompt Engine:** Orchestriert und fusioniert globale Qualitätsrichtlinien mit funktionsspezifischen Analyseregeln zu einem zusammenhängenden System-Instruction-Set.
 * **Gemini Schnittstelle & Netzwerk:** Verwaltet Authentifizierung, Netzverbindung, Search Grounding und asynchrone API-Anfragen.
-* **Parser (SummaryResponseParser):** Transformiert unstrukturierte oder teil-strukturierte LLM-Textoutputs mittels mehrstufiger Parser-Trichter (JSON, Regex, Zeilen-Fallback) in das einheitliche Datenmodell `AbstractorSummary`.
+* **Parser (SummaryResponseParser):** Transformiert unstrukturierte oder teil-strukturierte LLM-Textoutputs mittels mehrstufiger Parser-Trichter (JSON, Regex, Zeilen-Fallback) in das einheitliche Datenmodell `RelevantorSummary`.
 * **UI Layer (MainActivity / MainViewModel):** Konsumiert das geparste Ergebnis über reaktive State-Streams (`StateFlow`), analysiert die Struktur der Takeaway-Zeilen für grafische Aufbereitung (Bold-Prefix Splitting) und rendert ansprechend gestaltete Material-Design-3-Cards.
 
 ---
@@ -43,7 +43,7 @@ Vom Benutzereingriff bis zum vollendeten Bildaufbau auf dem Bildschirm durchläu
 5. **Sanierung & Typisierung (`SummaryResponseParser`):**
    * Sanierung von beschädigten JSON-Zeichenketten (z. B. Behebung überflüssiger trailing commas, Extraktion des inneren `{...}`-Bereichs).
    * Automatische Korrektur von camelCase (z. B. `keyTakeaways`) zu snake_case-Vorgaben (`key_takeaways`).
-   * Deserialisierung via Moshi Parser in `AbstractorSummary`.
+   * Deserialisierung via Moshi Parser in `RelevantorSummary`.
    * *Fallback:* Versagt Moshi, tritt ein hochauflösender Regex- und Line-by-Line-Extraktionstrichter in Kraft, der das Datenmodell eigenständig rekonstruiert.
 
 6. **UI-Schlagwortanalyse & Rendering (`MainActivity`):**
@@ -74,11 +74,11 @@ Vom Benutzereingriff bis zum vollendeten Bildaufbau auf dem Bildschirm durchläu
   3. *Ebene 3 (Line-Scraping):* Zerlegt das Dokument in Code-Zeilen und identifiziert Bulletpoint- oder Aufzählungszeilen direkt über Textmarker (`-`, `•`, `*`, `1. `).
 * **Erwartetes Format:** 
   Ein valides JSON, das sich an das Schema der `_global_quality_rules.md` hält (title, original_url, short_description, key_takeaways, owner).
-* **Failure Handling:** Es werden niemals Exceptions nach außen geworfen. Bei totaler Formatzerstörung wird ein valides `AbstractorSummary`-Objekt mit informativen Fehlertexten oder vordefinierten Hinweisen an die UI-Pipeline zurückgegeben.
+* **Failure Handling:** Es werden niemals Exceptions nach außen geworfen. Bei totaler Formatzerstörung wird ein valides `RelevantorSummary`-Objekt mit informativen Fehlertexten oder vordefinierten Hinweisen an die UI-Pipeline zurückgegeben.
 
 ### 3.3 UI-Schlagzeilen-Extraktion (`MainActivity.kt` & `MainViewModel.kt`)
 * **Datenannahme:** 
-  `MainViewModel` übermittelt den Zustand per `StateFlow<UiState>`. Ein Erfolg enthält das analysierte `AbstractorSummary` sowie den aktiven `AnalysisType`.
+  `MainViewModel` übermittelt den Zustand per `StateFlow<UiState>`. Ein Erfolg enthält das analysierte `RelevantorSummary` sowie den aktiven `AnalysisType`.
 * **Rendering-Verfahren:**
   Rendert den Header-Bereich (Titel, URL, Plattform-Emoji, Owner) und baut anschließend für die Takeaways dynamische Material-Design-Cards.
 * **Herausforderung im UI-Code:**
@@ -110,7 +110,7 @@ Bei der genauen Analyse des Quellcodes fallen erhebliche Kopplungsschwachstellen
    * *Abhängigkeit:* Der "Universal"-Parser ist nicht generisch. Er muss über jeden neuen Analysemodus Bescheid wissen und schleift modusspezifische Bereinigungslogik direkt im Parse-Hauptstrang mit.
 
 4. **Identitätskopplung (Copy-to-Clipboard):**
-   * *Problem:* Die Clipboard-Funktion `buildPlainTextShareOrCopyText` in `MainActivity.kt` baut die Struktur des Plaintexts für das Teilen manuell Zeile für Zeile nach, indem sie die hierarchischen Felder von `AbstractorSummary` neu formatiert.
+   * *Problem:* Die Clipboard-Funktion `buildPlainTextShareOrCopyText` in `MainActivity.kt` baut die Struktur des Plaintexts für das Teilen manuell Zeile für Zeile nach, indem sie die hierarchischen Felder von `RelevantorSummary` neu formatiert.
    * *Abhängigkeit:* Wenn sich der XML/Compose-Aufbau der UI-Cards ändert, läuft der kopierte Plaintext aus der Zwischenablage asynchron zur tatsächlichen Bildschirm-Präsentation.
 
 ---
@@ -131,7 +131,7 @@ Bei der genauen Analyse des Quellcodes fallen erhebliche Kopplungsschwachstellen
 Um eine robuste Betriebskompatibilität zu gewährleisten, sollten die nachfolgenden Entkopplungsschritte in der nächsten Systemarchitekturphase umgesetzt werden:
 
 1. **Einführung eines geparsten Daten-Intermediats (UI-Model-Entkopplung):**
-   * *Konzept:* Das Domänenmodell `AbstractorSummary` sollte keine rohen Markdown-Takeaways mehr enthalten. Stattdessen wird ein typisiertes Datenobjekt `TakeawayItem` eingeführt:
+   * *Konzept:* Das Domänenmodell `RelevantorSummary` sollte keine rohen Markdown-Takeaways mehr enthalten. Stattdessen wird ein typisiertes Datenobjekt `TakeawayItem` eingeführt:
      ```kotlin
      data class TakeawayItem(val title: String, val detail: String)
      ```

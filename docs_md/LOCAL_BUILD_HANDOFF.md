@@ -1,6 +1,6 @@
 # LOCAL BUILD HANDOFF & ANLEITUNG FÜR ANDROID STUDIO
 
-Dieses Dokument beschreibt, wie das Abstractor-Projekt nach dem Herunterladen aus Google AI Studio (GAIS) lokal in Android Studio eingerichtet, gebaut, signiert und auf einem physischen Android-Endgerät installiert wird.
+Dieses Dokument beschreibt, wie das Relevantor-Projekt nach dem Herunterladen aus Google AI Studio (GAIS) lokal in Android Studio eingerichtet, gebaut, signiert und auf einem physischen Android-Endgerät installiert wird.
 
 Da die AI Studio-Download- und Export-Pipeline gelegentlich die Integrität von APK- oder ZIP-Dateien im Browser beschädigt, garantiert der lokale Build in Android Studio volle Unabhängigkeit von Cloud-Übertragungsfehlern.
 
@@ -50,7 +50,7 @@ gradlew.bat assembleDebug
 Um die App auf deinem physischen Smartphone oder Tablet zu installieren:
 
 ### Vorbereitung auf dem Android-Gerät
-1. Deinstalliere unbedingt alle vorhandenen oder unvollständigen Versionen der **Abstractor**-App von deinem Gerät. Dies verhindert Konflikte mit Zertifikatssignaturen (da die Unterschriften von lokal gebauten und GAIS-gebauten APKs voneinander abweichen können).
+1. Deinstalliere unbedingt alle vorhandenen oder unvollständigen Versionen der **Relevantor**-App von deinem Gerät. Dies verhindert Konflikte mit Zertifikatssignaturen (da die Unterschriften von lokal gebauten und GAIS-gebauten APKs voneinander abweichen können).
 2. Aktiviere die **Entwickleroptionen** und das **USB-Debugging** auf deinem Gerät:
    * Gehe zu *Einstellungen > Telefoninfo* und tippe 7-mal schnell auf die *Build-Nummer*.
    * Gehe zurück zu *Einstellungen > System > Entwickleroptionen*.
@@ -74,7 +74,7 @@ adb install -r app/build/outputs/apk/debug/app-debug.apk
 ### Was tun bei Fehler "App wurde nicht installiert" / "Fehler beim Parsen des Pakets"?
 Sollte die Installation der über Android Studio lokal gebauten APK fehlschlagen, führe die folgenden Prüfungen durch:
 
-1. **Unvollständige Deinstallation:** Häufig bleibt ein Package-Objekt unter einem anderen Benutzerprofil oder im Arbeitsbereich (Work Profile) des Telefons aktiv. Gehe in den App-Manager deines Smartphones, suche nach "Abstractor" und stelle sicher, dass sie für *alle Benutzer* vollständig entfernt wurde.
+1. **Unvollständige Deinstallation:** Häufig bleibt ein Package-Objekt unter einem anderen Benutzerprofil oder im Arbeitsbereich (Work Profile) des Telefons aktiv. Gehe in den App-Manager deines Smartphones, suche nach "Relevantor" und stelle sicher, dass sie für *alle Benutzer* vollständig entfernt wurde.
 2. **Paket-Integrität prüfen:**
    Prüfe via Kommandozeile, ob das APK beschädigt ist:
    * Unter macOS / Linux: `unzip -t app/build/outputs/apk/debug/app-debug.apk`

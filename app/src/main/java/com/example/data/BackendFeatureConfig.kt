@@ -1,7 +1,7 @@
 package com.example.data
 
 object BackendFeatureConfig {
-    const val backendEnabled: Boolean = false
-    const val authEnabled: Boolean = false
-    const val cloudSyncEnabled: Boolean = false
+    const val backendEnabled = false
+    const val authEnabled = false
+    const val cloudSyncEnabled = false
 }
