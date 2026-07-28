@@ -344,16 +344,25 @@ Wenn keine vorhanden:
 
 ## Fazit & Empfehlung
 
-Struktur:
+Zu berücksichtigende Dimensionen (nur als interne Prüfdimensionen):
+- Zielgruppe / für wen geeignet
+- geeignete Besuchssituationen (Zeitpunkt / Anlass / Bedingungen)
+- Nutzererwartungen und praktische Hinweise (Was sollte der Besucher wissen?)
 
-• Für wen geeignet:
-[Zielgruppe]
+Ausgabeformat (STRIKT):
+Das Ergebnis muss als natürlicher, zusammenhängender Fließtext ausgegeben werden.
 
-• Wann lohnt sich ein Besuch:
-[Zeitpunkt / Anlass / Bedingungen]
+NICHT verwenden:
+- künstliche Labels (wie "Für wen geeignet:", "Nutzererwartung:")
+- Doppelpunkt-Strukturen
+- Bulletpoints
+- Unterüberschriften innerhalb des Textfeldes
 
-• Nutzererwartung:
-[Was sollte der Besucher wissen?]
+Die Erkenntnisse dieser Dimensionen müssen in einen flüssig lesbaren Empfehlungstext integriert werden.
+
+Beispiel für den Stil:
+Nicht: "• Für wen geeignet: Familien. • Wann lohnt sich ein Besuch: Abends."
+Sondern: "Der Ort eignet sich besonders für Familien. Ein Besuch am Abend bietet sich besonders an."
 
 Auch hier:
 

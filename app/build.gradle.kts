@@ -157,3 +157,5 @@ tasks.register("verifyApk") {
 tasks.matching { it.name == "assembleDebug" }.configureEach {
     finalizedBy("verifyApk")
 }
+dependencies {
+}
