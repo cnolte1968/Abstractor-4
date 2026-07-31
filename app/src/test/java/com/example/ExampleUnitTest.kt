@@ -387,6 +387,22 @@ class ExampleUnitTest {
   }
 
   @Test
+  fun testOwnerSanitization() {
+    val parser = com.example.data.SummaryResponseParser
+    assertEquals("Max Mustermann", parser.sanitizeOwner("Max Mustermann"))
+    assertNull(parser.sanitizeOwner("null"))
+    assertNull(parser.sanitizeOwner("Null"))
+    assertNull(parser.sanitizeOwner("NULL"))
+    assertNull(parser.sanitizeOwner("unknown"))
+    assertNull(parser.sanitizeOwner("unbekannt"))
+    assertNull(parser.sanitizeOwner("n/a"))
+    assertNull(parser.sanitizeOwner("N/A"))
+    assertNull(parser.sanitizeOwner("  "))
+    assertNull(parser.sanitizeOwner("**null**"))
+    assertNull(parser.sanitizeOwner("none"))
+  }
+
+  @Test
   fun testMoshiParsingInvalidJsonHandling() {
     val json = "{ invalid_json: this is not a valid json object }"
     try {

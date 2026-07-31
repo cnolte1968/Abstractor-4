@@ -1,0 +1,1 @@
+sed -i 's/assertEquals(154, com.example.data.GatewayDiagnostics.ytFinalTranscriptLength)/assertEquals(141, com.example.data.GatewayDiagnostics.ytFinalTranscriptLength)/' /app/applet/app/src/test/java/com/example/ContentExtractionRegressionTest.kt

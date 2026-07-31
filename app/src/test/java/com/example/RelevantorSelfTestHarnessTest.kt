@@ -1407,7 +1407,7 @@ class RelevantorSelfTestHarnessTest {
      */
     @Test
     fun selfTest_featureCatalog_registry_prompt_menu_consistency() {
-        val enabledFeatures = FeatureCatalog.features.filter { it.enabled && !it.isPlaceholder && it.functionId != "GOOGLE_MAPS_ANALYZER" }
+        val enabledFeatures = FeatureCatalog.features.filter { it.enabled && !it.isPlaceholder && it.functionId != "GOOGLE_MAPS_ANALYZER" && it.functionId != "GOOGLE_MAPS_LOCATION_CONTEXT" }
 
         assertTrue("There must be enabled production features", enabledFeatures.isNotEmpty())
 
@@ -1566,7 +1566,7 @@ class RelevantorSelfTestHarnessTest {
     @Test
     fun selfTest_featureOnboardingVerification() = runBlocking {
         println("=== RELEVANTOR FEATURE ONBOARDING VERIFICATION ===")
-        val activeFeatures = FeatureCatalog.features.filter { it.enabled && !it.isPlaceholder && it.functionId != "GOOGLE_MAPS_ANALYZER" }
+        val activeFeatures = FeatureCatalog.features.filter { it.enabled && !it.isPlaceholder && it.functionId != "GOOGLE_MAPS_ANALYZER" && it.functionId != "GOOGLE_MAPS_LOCATION_CONTEXT" }
         val placeholderFeatures = FeatureCatalog.features.filter { it.isPlaceholder }
 
         // Assert there are active and placeholder features

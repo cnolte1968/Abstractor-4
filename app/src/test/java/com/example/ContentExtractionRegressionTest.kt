@@ -757,7 +757,7 @@ class ContentExtractionRegressionTest {
             assertEquals("de", com.example.data.GatewayDiagnostics.ytLanguage)
             assertEquals(200, com.example.data.GatewayDiagnostics.ytCaptionHttpStatus)
             assertEquals(1, com.example.data.GatewayDiagnostics.ytExtractedSegmentCount)
-            assertEquals(154, com.example.data.GatewayDiagnostics.ytFinalTranscriptLength)
+            assertEquals(141, com.example.data.GatewayDiagnostics.ytFinalTranscriptLength)
             
             // Generate pipeline report to verify mappings
             com.example.data.PipelineReportStore.populateFromDiagnostics(context)

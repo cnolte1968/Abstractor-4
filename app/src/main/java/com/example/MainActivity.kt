@@ -749,6 +749,7 @@ fun getCategoryDescription(categoryId: String): String {
         "E" -> "Dokumente, PDFs, Bilder, Screenshots, KI-Analysen"
         "D" -> "Social Media, E-Mails, Pressemitteilungen, Multi-URLs"
         "C" -> "Infografiken, Mindmaps, Diagramme, Bild-Prompts"
+        "F" -> "Google Maps Analyser, Kontext zum Ort"
         else -> ""
     }
 }
@@ -937,7 +938,8 @@ fun SmartphoneLayout(
                                 categoriesList.find { it.id == "B" },
                                 categoriesList.find { it.id == "E" },
                                 categoriesList.find { it.id == "D" },
-                                categoriesList.find { it.id == "C" }
+                                categoriesList.find { it.id == "C" },
+                                categoriesList.find { it.id == "F" }
                             ).filterNotNull()
 
                             LazyColumn(
@@ -1602,7 +1604,9 @@ fun CategoryInfoCard(category: CategoryInfo) {
                     "B" -> "Verifiziere Glaubwürdigkeit und Aktualität der Quelle, decke versteckte Motive auf und filtere fehlerhafte Behauptungen heraus."
                     "C" -> "Erzeuge strukturierte, visuelle Organigramme, Infografiken und Bildkonzepte zur didaktischen Unterstützung."
                     "D" -> "Konvertiere den Quellinhalt direkt in Social Media Beiträge, formelle Anschreiben oder kombiniere mehrere URLs miteinander."
-                    else -> "Analysiere direkt PDF-Dokumente, extrahiere Text aus visuellen Scans oder verarbeite Multimedia-Transkripte."
+                    "E" -> "Analysiere direkt PDF-Dokumente, extrahiere Text aus visuellen Scans oder verarbeite Multimedia-Transkripte."
+                    "F" -> "Analysiere Ortsparameter, Places API Details sowie Umfeld- und Ortskontext für Google Maps Orte."
+                    else -> "Analysiere Inhalte mit spezialisierten Funktionen."
                 },
                 fontSize = 12.sp,
                 color = MaterialTheme.colorScheme.onBackground
@@ -1996,6 +2000,9 @@ fun ResultScreen(
     var showSmokeDialog by remember { mutableStateOf(false) }
     var isRunningSmokeTests by remember { mutableStateOf(false) }
     var smokeTestReport by remember { mutableStateOf<com.example.data.SmokeTestHarnessReport?>(null) }
+    var showLocationContextDialog by remember { mutableStateOf(false) }
+    var isRunningLocationContextDiagnosis by remember { mutableStateOf(false) }
+    var locationContextReport by remember { mutableStateOf<com.example.data.contextengine.LocationContextDiagnosticReport?>(null) }
 
     Scaffold(
         topBar = {
@@ -2091,6 +2098,25 @@ fun ResultScreen(
                                 },
                                 leadingIcon = { Icon(Icons.Default.NetworkCheck, contentDescription = null) }
                             )
+                            DropdownMenuItem(
+                                text = { Text("Location Context Diagnose (Dev)") },
+                                onClick = {
+                                    showMenu = false
+                                    isRunningLocationContextDiagnosis = true
+                                    scope.launch(kotlinx.coroutines.Dispatchers.IO) {
+                                        val report = com.example.data.contextengine.LocationContextDiagnosticRunner.runDiagnosis(
+                                            context = context,
+                                            inputUrl = summary.originalUrl.ifBlank { "https://maps.google.com/?q=Wat+Phra+That+Doi+Suthep" }
+                                        )
+                                        kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
+                                            locationContextReport = report
+                                            showLocationContextDialog = true
+                                            isRunningLocationContextDiagnosis = false
+                                        }
+                                    }
+                                },
+                                leadingIcon = { Icon(Icons.Default.Place, contentDescription = null) }
+                            )
                         }
                     }
                 }
@@ -2178,7 +2204,7 @@ fun ResultScreen(
                             val authorText = if (!summary.owner.isNullOrBlank()) {
                                 "von ${summary.owner}"
                             } else {
-                                "Autor nicht eindeutig ermittelbar"
+                                "Owner unbekannt"
                             }
                             Text(authorText, fontSize = 11.sp, color = Color.Gray)
                         }
@@ -2339,6 +2365,72 @@ fun ResultScreen(
                     val debugJson = buildDebugJson(summary, activeFunction, context)
                     clipboardManager.setText(AnnotatedString(debugJson))
                     Toast.makeText(context, "Debug-Daten kopiert!", Toast.LENGTH_SHORT).show()
+                }) {
+                    Text("Kopieren")
+                }
+            }
+        )
+    }
+
+    // Location Context Diagnostics Dialog
+    if (showLocationContextDialog && locationContextReport != null) {
+        val report = locationContextReport!!
+        AlertDialog(
+            onDismissRequest = { showLocationContextDialog = false },
+            title = { Text("Location Context Diagnose (Dev)", fontWeight = FontWeight.Bold, fontSize = 18.sp) },
+            text = {
+                Box(modifier = Modifier.heightIn(max = 420.dp)) {
+                    Column(
+                        modifier = Modifier
+                            .verticalScroll(rememberScrollState())
+                            .fillMaxWidth(),
+                        verticalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        DebugRow("1. Input URL", report.inputUrl)
+                        DebugRow("2. Ort / Place", report.placeName)
+                        DebugRow("   Place Details", report.placeData)
+                        DebugRow("3. AnalysisType", report.analysisType)
+                        DebugRow("4. Prompt Pfad", report.loadedPromptPath)
+                        DebugRow("   Prompt SHA256", report.loadedPromptSha256.take(16) + "...")
+                        DebugRow("5. Service Aufruf", report.serviceCallStatus)
+                        DebugRow("6. ContextEngine Status", report.contextEngineStatus)
+                        DebugRow("7. Wikipedia Status", report.wikipediaResultStatus)
+                        DebugRow("   Wikipedia Titel", report.wikipediaResultTitle)
+                        DebugRow("   Wikipedia Zeichen", "${report.wikipediaResultCharCount}")
+                        DebugRow("8. Wikivoyage Status", report.wikivoyageResultStatus)
+                        DebugRow("   Wikivoyage Titel", report.wikivoyageResultTitle)
+                        DebugRow("   Wikivoyage Zeichen", "${report.wikivoyageResultCharCount}")
+                        DebugRow("9. Gemini Injection", "${report.geminiContextInjectionLength} Zeichen")
+                        DebugRow("   Fakten-Abschnitt", if (report.geminiContextInjectionHasFacts) "VORHANDEN" else "FEHLT")
+                        DebugRow("   Reisekontext-Abschnitt", if (report.geminiContextInjectionHasTravelContext) "VORHANDEN" else "FEHLT")
+                        DebugRow("10. Contract Status", report.finalContractStatus)
+
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Text("Vorschau Context Injection:", fontWeight = FontWeight.Bold, fontSize = 12.sp)
+                        Surface(
+                            color = Color(0xFFF1F5F9),
+                            shape = RoundedCornerShape(8.dp),
+                            modifier = Modifier.fillMaxWidth().padding(top = 4.dp)
+                        ) {
+                            Text(
+                                text = report.geminiContextInjectionPreview,
+                                fontSize = 11.sp,
+                                fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace,
+                                modifier = Modifier.padding(8.dp)
+                            )
+                        }
+                    }
+                }
+            },
+            confirmButton = {
+                Button(onClick = { showLocationContextDialog = false }) {
+                    Text("Schließen")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = {
+                    clipboardManager.setText(AnnotatedString(report.toFormattedString()))
+                    Toast.makeText(context, "Diagnose-Report kopiert!", Toast.LENGTH_SHORT).show()
                 }) {
                     Text("Kopieren")
                 }

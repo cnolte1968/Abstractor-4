@@ -51,6 +51,7 @@ class AnalysisRegistryImpl(
             Triple("RELEVANT_ASPECTS", "Weitere relevante Aspekte", "prompts/F_WEITERE_RELEVANTE_ASPEKTE.md"),
             Triple("BUSINESS_INKUBATOR", "Business Incubator", "prompts/F_BUSINESS_INKUBATOR.md"),
             Triple("GOOGLE_MAPS_ANALYZER", "Google Maps Analyser", "prompts/F_GOOGLE_MAPS_ANALYZER.md"),
+            Triple("GOOGLE_MAPS_LOCATION_CONTEXT", "Google Maps Location Context", "prompts/F_GOOGLE_MAPS_LOCATION_CONTEXT.md"),
             Triple("PHOTO_SCREENSHOT_ANALYSIS", "Photo & Screenshot Analysis", "prompts/F_PHOTO_SCREENSHOT_ANALYSIS.md")
         )
 
@@ -95,6 +96,7 @@ class AnalysisRegistryImpl(
             AnalysisType.DOKUMENTE, AnalysisType.DOCUMENT_SUMMARY -> "DOCUMENT_SUMMARY"
             AnalysisType.WEITERE_RELEVANTE_ASPEKTE, AnalysisType.RELEVANT_ASPECTS -> "RELEVANT_ASPECTS"
             AnalysisType.GOOGLE_MAPS_ANALYZER -> "GOOGLE_MAPS_ANALYZER"
+            AnalysisType.GOOGLE_MAPS_LOCATION_CONTEXT -> "GOOGLE_MAPS_LOCATION_CONTEXT"
             AnalysisType.PHOTO_SCREENSHOT_ANALYSIS -> "PHOTO_SCREENSHOT_ANALYSIS"
         }
     }

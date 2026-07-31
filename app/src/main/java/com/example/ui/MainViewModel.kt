@@ -420,6 +420,7 @@ class MainViewModel : ViewModel() {
     }
 
     fun processSharedText(sharedText: String, intent: Intent? = null) {
+        resetToIdle()
         setSharedText(sharedText, intent)
     }
 

@@ -463,7 +463,7 @@ class ExampleRobolectricTest {
     val context = ApplicationProvider.getApplicationContext<Context>()
     val allTypes = com.example.data.AnalysisType.values()
     
-    org.junit.Assert.assertEquals("There should be exactly 25 AnalysisTypes", 25, allTypes.size)
+    org.junit.Assert.assertEquals("There should be exactly 26 AnalysisTypes", 26, allTypes.size)
 
     for (type in allTypes) {
       println("REGRESSION_TEST: Testing type -> $type")

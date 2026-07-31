@@ -160,6 +160,27 @@ class GoogleMapsUrlParserTest {
     }
 
     @Test
+    fun testParseHappyFrogUrl() {
+        val url = "https://www.google.com/maps/place/%22The+Happy+Frog%22*One+Nimman,+One+Nimman,+Nimmanahaeminda+Road+Nimmanhaemin+Tambon+Su+Thep,+Mueang+Chiang+Mai+District,+Chiang+Mai+50200/data=!4m2!3m1!1s0x30da3b0729e8e51f:0x196dfc6ac7f60407"
+        val result = GoogleMapsUrlParser.parseGoogleMapsUrl("text", url, url, "SUCCESS")
+        
+        assertEquals("The Happy Frog", result.placeName)
+        assertEquals("One Nimman, One Nimman, Nimmanahaeminda Road Nimmanhaemin Tambon Su Thep, Mueang Chiang Mai District, Chiang Mai 50200", result.address)
+        assertEquals("30da3b0729e8e51f", result.featureId)
+        assertEquals("1832398158961181703", result.cid) // hex 196dfc6ac7f60407
+    }
+
+    @Test
+    fun testParsePorjaiMassageUrl() {
+        val url = "https://www.google.com/maps/place/Porjai+Massage*Soi+8+Tambon+Si+Phum,+Mueang+Chiang+Mai+District,+Chiang+Mai+50200/data=!4m2!3m1!1s0x30da3b10c0e5a873:0x1234567890abcdef"
+        val result = GoogleMapsUrlParser.parseGoogleMapsUrl("text", url, url, "SUCCESS")
+        
+        assertEquals("Porjai Massage", result.placeName)
+        assertEquals("Soi 8 Tambon Si Phum, Mueang Chiang Mai District, Chiang Mai 50200", result.address)
+        assertEquals("30da3b10c0e5a873", result.featureId)
+    }
+
+    @Test
     fun testResolveShortUrlValidation() {
         // http URL
         val httpRes = GoogleMapsUrlParser.resolveShortUrl("http://maps.app.goo.gl/abcdef")

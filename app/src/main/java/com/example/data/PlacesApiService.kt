@@ -42,7 +42,9 @@ data class TextSearchResponse(
 @JsonClass(generateAdapter = true)
 data class PlaceIdName(
     val id: String,
-    val name: String
+    val name: String,
+    val formattedAddress: String? = null,
+    val location: LatLng? = null
 )
 
 @JsonClass(generateAdapter = true)
@@ -189,6 +191,12 @@ object PlacesApiService {
         return key
     }
 
+    fun buildQueryText(mapsResult: GoogleMapsPoCResult): String? {
+        val queryParts = listOfNotNull(mapsResult.placeName, mapsResult.address).filter { it.isNotBlank() }
+        val combinedName = if (queryParts.isNotEmpty()) queryParts.joinToString(" ") else null
+        return combinedName ?: mapsResult.searchQuery
+    }
+
     /**
      * Resolves Google Maps link and queries Places API (New) End-To-End.
      */
@@ -237,7 +245,8 @@ object PlacesApiService {
             Log.i(TAG, "Direkte Place-ID aus URL gefunden: $currentPlaceId")
         } else {
             // No Place-ID in URL, need Text Search (New)
-            val queryText = mapsResult.placeName ?: mapsResult.searchQuery
+            val queryText = buildQueryText(mapsResult)
+            
             if (queryText.isNullOrBlank()) {
                 return GooglePlacesPoCResult(
                     originalSharedUrl = originalSharedUrl,
@@ -288,10 +297,35 @@ object PlacesApiService {
                         matchStatus = "EXACT"
                         Log.i(TAG, "Eindeutiger Treffer gefunden: $currentPlaceId")
                     } else {
-                        // Ambiguous results
-                        resolutionMethod = "TEXT_SEARCH_AMBIGUOUS"
-                        matchStatus = "AMBIGUOUS"
-                        warnings.add("Mehrdeutige Treffer (${places.size}) für '$queryText'. Suche abgebrochen.")
+                        val urlInfo = GoogleMapsDisambiguator.UrlInfo(
+                            placeName = mapsResult.placeName,
+                            address = mapsResult.address,
+                            lat = mapsResult.latitude,
+                            lng = mapsResult.longitude,
+                            placeId = mapsResult.placeId
+                        )
+                        val candidates = places.map { place ->
+                            GoogleMapsDisambiguator.Candidate(
+                                id = place.id,
+                                name = place.name,
+                                address = place.formattedAddress,
+                                lat = place.location?.latitude,
+                                lng = place.location?.longitude
+                            )
+                        }
+                        val bestMatch = GoogleMapsDisambiguator.disambiguate(urlInfo, candidates)
+                        
+                        if (bestMatch != null) {
+                            currentPlaceId = bestMatch.id
+                            resolutionMethod = "TEXT_SEARCH_DISAMBIGUATED"
+                            matchStatus = "EXACT"
+                            Log.i(TAG, "Treffer durch Disambiguator ausgewählt: $currentPlaceId")
+                        } else {
+                            // Ambiguous results
+                            resolutionMethod = "TEXT_SEARCH_AMBIGUOUS"
+                            matchStatus = "AMBIGUOUS"
+                            warnings.add("Mehrdeutige Treffer (${places.size}) für '$queryText'. Disambiguierung nicht eindeutig. Suche abgebrochen.")
+                        }
                     }
                 } else {
                     resolutionMethod = "TEXT_SEARCH_NO_MATCH"
@@ -448,7 +482,7 @@ object PlacesApiService {
             .url("https://places.googleapis.com/v1/places:searchText")
             .post(requestBody)
             .header("X-Goog-Api-Key", apiKey)
-            .header("X-Goog-FieldMask", "places.id,places.name")
+            .header("X-Goog-FieldMask", "places.id,places.name,places.formattedAddress,places.location")
             .header("Content-Type", "application/json")
             .build()
 

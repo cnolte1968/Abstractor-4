@@ -870,10 +870,33 @@ object SummaryResponseParser {
         )
     }
 
+    fun sanitizeOwner(rawOwner: String?): String? {
+        if (rawOwner == null) return null
+        val cleaned = rawOwner.replace("**", "").replace("__", "").trim()
+        if (cleaned.isBlank() || cleaned == "-") return null
+        val lower = cleaned.lowercase(java.util.Locale.ROOT)
+        val invalidOwners = setOf(
+            "null",
+            "unknown",
+            "unbekannt",
+            "n/a",
+            "na",
+            "none",
+            "keine",
+            "keiner",
+            "kein",
+            "undefined"
+        )
+        if (lower in invalidOwners) {
+            return null
+        }
+        return cleaned
+    }
+
     fun postProcess(summary: DomainSummary, type: AnalysisType?): DomainSummary {
         val cleanTitle = summary.title.replace("**", "").replace("__", "").removeSuffix(":").trim()
         val cleanShortDesc = summary.shortDescription.replace("**", "").replace("__", "").trim()
-        val cleanOwner = summary.owner?.replace("**", "")?.replace("__", "")?.trim()
+        val cleanOwner = sanitizeOwner(summary.owner)
 
         val keepNumbering = type == AnalysisType.FACTS_VS_OPINIONS_ANALYZER || type == AnalysisType.PERSPECTIVES_AND_COUNTERPOSITIONS
         

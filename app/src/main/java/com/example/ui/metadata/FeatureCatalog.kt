@@ -44,7 +44,8 @@ object FeatureCatalog {
         CategoryMetadata("B", "", "Qualität, Kritik & Einordnung", Icons.Default.Shield, Color(0xFF4F46E5), 2),
         CategoryMetadata("E", "", "Arbeiten mit Dateien", Icons.Default.Folder, Color(0xFF0891B2), 3),
         CategoryMetadata("D", "", "Inhalte verarbeiten", Icons.Default.Share, Color(0xFFD97706), 4),
-        CategoryMetadata("C", "", "Visualisierung", Icons.Default.Palette, Color(0xFF059669), 5)
+        CategoryMetadata("C", "", "Visualisierung", Icons.Default.Palette, Color(0xFF059669), 5),
+        CategoryMetadata("F", "", "Google Maps", Icons.Default.Place, Color(0xFFEA4335), 6)
     ).sortedBy { it.sortOrder }
 
     val features: List<FeatureMetadata> = listOf(
@@ -71,7 +72,10 @@ object FeatureCatalog {
         FeatureMetadata("SOCIAL_MEDIA_GENERATOR", null, "Social-Media-Generator", "LinkedIn-, X-, Facebook- und Instagram-Posts erzeugen", "D", 1, Icons.Default.Campaign, Color(0xFFD97706), enabled = false, isPlaceholder = true, acceptedInputs = setOf(AcceptedInput.WEB)),
         FeatureMetadata("COMMUNICATION_GENERATOR", null, "Kommunikations-Generator", "Empfehlungsmails, Pressemitteilungen und Kommentare erzeugen", "D", 2, Icons.Default.Mail, Color(0xFFD97706), enabled = false, isPlaceholder = true, acceptedInputs = setOf(AcceptedInput.WEB)),
         FeatureMetadata("MULTI_URL_SUMMARY", null, "Zusammenfassung aus mehreren URL", "Mehrere Quellen zusammenfassen", "D", 3, Icons.Default.Layers, Color(0xFFD97706), enabled = false, isPlaceholder = true, acceptedInputs = setOf(AcceptedInput.MULTI_URL)),
-        FeatureMetadata("GOOGLE_MAPS_ANALYZER", AnalysisType.GOOGLE_MAPS_ANALYZER, "Google Maps Analyser", "Ortsparameter und Places API Details analysieren", "A", 5, Icons.Default.Place, Color(0xFF2563EB), enabled = true, acceptedInputs = setOf(AcceptedInput.WEB)),
+
+        // Category F (Google Maps)
+        FeatureMetadata("GOOGLE_MAPS_ANALYZER", AnalysisType.GOOGLE_MAPS_ANALYZER, "Google Maps Analyser", "Ortsparameter und Places API Details analysieren", "F", 1, Icons.Default.Place, Color(0xFFEA4335), enabled = true, acceptedInputs = setOf(AcceptedInput.WEB)),
+        FeatureMetadata("GOOGLE_MAPS_LOCATION_CONTEXT", AnalysisType.GOOGLE_MAPS_LOCATION_CONTEXT, "Kontext zum Ort", "Umfeld-, Orts- und Hintergrundkontext analysieren", "F", 2, Icons.Default.Map, Color(0xFFEA4335), enabled = true, acceptedInputs = setOf(AcceptedInput.WEB)),
 
         // Category E
         FeatureMetadata("DOCUMENT_SUMMARY", AnalysisType.DOCUMENT_SUMMARY, "Dokument zusammenfassen", "Dateiinhalt kompakt analysieren", "E", 1, Icons.Default.Article, Color(0xFF0891B2), enabled = true, acceptedInputs = setOf(AcceptedInput.DOCUMENT)),

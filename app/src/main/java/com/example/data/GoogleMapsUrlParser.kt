@@ -13,7 +13,9 @@ data class GoogleMapsPoCResult(
     val detectedUrlType: String?, // "SHORT_LINK", "LONG_MAPS", "SEARCH_MAPS", "UNKNOWN"
     val placeId: String?,
     val cid: String?,
+    val featureId: String? = null,
     val placeName: String?,
+    val address: String? = null,
     val searchQuery: String?,
     val latitude: Double?,
     val longitude: Double?,
@@ -217,14 +219,16 @@ object GoogleMapsUrlParser {
 
         // 2. CID (Google Customer ID)
         var cid: String? = null
+        var featureId: String? = null
         val cidParam = queryParams["cid"]
         if (cidParam != null) {
             cid = cidParam
         } else {
-            val hexCidRegex = Regex("0x[0-9a-fA-F]+:0x([0-9a-fA-F]+)")
+            val hexCidRegex = Regex("0x([0-9a-fA-F]+):0x([0-9a-fA-F]+)")
             val hexCidMatch = hexCidRegex.find(finalUrlToParse)
             if (hexCidMatch != null) {
-                val hexCid = hexCidMatch.groupValues[1]
+                featureId = hexCidMatch.groupValues[1]
+                val hexCid = hexCidMatch.groupValues[2]
                 try {
                     cid = java.lang.Long.toUnsignedString(java.lang.Long.parseUnsignedLong(hexCid, 16))
                 } catch (e: Exception) {
@@ -235,14 +239,21 @@ object GoogleMapsUrlParser {
 
         // 3. Ortsname (Place name)
         var placeName: String? = null
+        var address: String? = null
         val placePathRegex = Regex("/maps/place/([^/@?#]+)")
         val placePathMatch = placePathRegex.find(finalUrlToParse)
         if (placePathMatch != null) {
             val rawName = placePathMatch.groupValues[1]
-            placeName = try {
+            val decodedName = try {
                 URLDecoder.decode(rawName, "UTF-8")
             } catch (e: Exception) {
                 rawName.replace("+", " ")
+            }
+            val cleanName = decodedName.replace("\"", "")
+            val nameParts = cleanName.split("*", limit = 2)
+            placeName = nameParts[0].trim()
+            if (nameParts.size > 1) {
+                address = nameParts[1].trim()
             }
         }
 
@@ -310,7 +321,9 @@ object GoogleMapsUrlParser {
             detectedUrlType = detectUrlType(finalUrlToParse),
             placeId = placeId,
             cid = cid,
+            featureId = featureId,
             placeName = placeName,
+            address = address,
             searchQuery = searchQuery,
             latitude = latitude,
             longitude = longitude,

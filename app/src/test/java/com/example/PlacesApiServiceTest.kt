@@ -30,7 +30,9 @@ class PlacesApiServiceTest {
             detectedUrlType = "LONG_MAPS",
             placeId = null,
             cid = "1311768467294834428",
+            featureId = "0x0",
             placeName = "SomePlace",
+            address = null,
             searchQuery = null,
             latitude = 50.0,
             longitude = 10.0,
@@ -53,5 +55,62 @@ class PlacesApiServiceTest {
         if (placesResult.apiStatus == "API_KEY_MISSING") {
             assertTrue(placesResult.warnings.any { it.contains("fehlt oder ist nicht konfiguriert") })
         }
+    }
+
+    @Test
+    fun testBuildQueryTextHappyFrog() {
+        val mockResult = GoogleMapsPoCResult(
+            originalSharedText = "url", extractedUrl = "url", resolvedUrl = "url",
+            detectedUrlType = "LONG_MAPS", placeId = null, cid = null, featureId = null,
+            placeName = "The Happy Frog",
+            address = "One Nimman, One Nimman, Nimmanahaeminda Road Nimmanhaemin Tambon Su Thep, Mueang Chiang Mai District, Chiang Mai 50200",
+            searchQuery = null, latitude = null, longitude = null, zoom = null,
+            resolutionStatus = "SUCCESS", warnings = emptyList()
+        )
+        val query = PlacesApiService.buildQueryText(mockResult)
+        assertEquals("The Happy Frog One Nimman, One Nimman, Nimmanahaeminda Road Nimmanhaemin Tambon Su Thep, Mueang Chiang Mai District, Chiang Mai 50200", query)
+    }
+
+    @Test
+    fun testBuildQueryTextPorjaiMassage() {
+        val mockResult = GoogleMapsPoCResult(
+            originalSharedText = "url", extractedUrl = "url", resolvedUrl = "url",
+            detectedUrlType = "LONG_MAPS", placeId = null, cid = null, featureId = null,
+            placeName = "Porjai Massage",
+            address = "Soi 8 Tambon Si Phum, Mueang Chiang Mai District, Chiang Mai 50200",
+            searchQuery = null, latitude = null, longitude = null, zoom = null,
+            resolutionStatus = "SUCCESS", warnings = emptyList()
+        )
+        val query = PlacesApiService.buildQueryText(mockResult)
+        assertEquals("Porjai Massage Soi 8 Tambon Si Phum, Mueang Chiang Mai District, Chiang Mai 50200", query)
+    }
+
+    @Test
+    fun testBuildQueryTextFallbackToSearchQuery() {
+        // Fallback to searchQuery when placeName is missing
+        val mockResult = GoogleMapsPoCResult(
+            originalSharedText = "url", extractedUrl = "url", resolvedUrl = "url",
+            detectedUrlType = "SEARCH_MAPS", placeId = null, cid = null, featureId = null,
+            placeName = null,
+            address = null,
+            searchQuery = "Kölner Dom", latitude = null, longitude = null, zoom = null,
+            resolutionStatus = "SUCCESS", warnings = emptyList()
+        )
+        val query = PlacesApiService.buildQueryText(mockResult)
+        assertEquals("Kölner Dom", query)
+    }
+
+    @Test
+    fun testBuildQueryTextOnlyPlaceName() {
+        val mockResult = GoogleMapsPoCResult(
+            originalSharedText = "url", extractedUrl = "url", resolvedUrl = "url",
+            detectedUrlType = "LONG_MAPS", placeId = null, cid = null, featureId = null,
+            placeName = "SomePlace",
+            address = null,
+            searchQuery = "Ignored Query", latitude = null, longitude = null, zoom = null,
+            resolutionStatus = "SUCCESS", warnings = emptyList()
+        )
+        val query = PlacesApiService.buildQueryText(mockResult)
+        assertEquals("SomePlace", query)
     }
 }

@@ -45,7 +45,7 @@ object ExportFormatter {
             append("<div class='url'>Quelle: ").append(escapeHtml(summary.originalUrl)).append("</div>")
 
             val author = summary.owner
-            val authorText = if (!author.isNullOrBlank()) "von ${escapeHtml(author)}" else "Autor nicht eindeutig ermittelbar"
+            val authorText = if (!author.isNullOrBlank()) "von ${escapeHtml(author)}" else "Owner unbekannt"
             append("<div class='meta'>").append(authorText).append("</div>")
 
             append("<h2>Ganz kurz</h2>")
