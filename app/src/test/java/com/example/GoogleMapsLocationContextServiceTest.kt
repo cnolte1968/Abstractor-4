@@ -236,6 +236,352 @@ class GoogleMapsLocationContextServiceTest {
         assertFalse(capturedInput!!.enrichedText.contains("=== FAKTEN ==="))
     }
 
+    @Test
+    fun testHappyFrogShortLinkResolvesPlaceNameAndRejectsJavaScriptNotice() = runTest {
+        var capturedPlaceName: String? = null
+        val trackingSource = object : com.example.data.contextengine.ContextSource {
+            override val sourceName: String = "TEST"
+            override val sourceType = com.example.data.contextengine.ContextSourceType.OFFICIAL_DATA
+            override suspend fun fetchContext(input: LocationContextInput): com.example.data.contextengine.ContextResult {
+                capturedPlaceName = input.placeName
+                return com.example.data.contextengine.ContextResult(
+                    sourceName = sourceName,
+                    sourceType = sourceType,
+                    isSuccessful = true,
+                    snippet = "Location found for ${input.placeName}"
+                )
+            }
+        }
+
+        val service = GoogleMapsLocationContextService(ContextEngine(listOf(trackingSource)))
+        val jsNotice = "When you have eliminated the JavaScript, whatever remains must be an empty page. Enable JavaScript to see Google Maps."
+        val input = LocationContextInput(
+            placeName = jsNotice,
+            rawUrl = "https://maps.app.goo.gl/Kwj5C5RbgNdf41zD6"
+        )
+
+        service.fetchLocationContextResults(input)
+
+        assertTrue(capturedPlaceName != null)
+        assertTrue(capturedPlaceName != jsNotice)
+        assertEquals("The Happy Frog", capturedPlaceName)
+    }
+
+    @Test
+    fun testValidExistingPlaceNameNotOverwritten() = runTest {
+        var capturedPlaceName: String? = null
+        val trackingSource = object : com.example.data.contextengine.ContextSource {
+            override val sourceName: String = "TEST"
+            override val sourceType = com.example.data.contextengine.ContextSourceType.OFFICIAL_DATA
+            override suspend fun fetchContext(input: LocationContextInput): com.example.data.contextengine.ContextResult {
+                capturedPlaceName = input.placeName
+                return com.example.data.contextengine.ContextResult(
+                    sourceName = sourceName,
+                    sourceType = sourceType,
+                    isSuccessful = true,
+                    snippet = "Valid place"
+                )
+            }
+        }
+
+        val service = GoogleMapsLocationContextService(ContextEngine(listOf(trackingSource)))
+        val input = LocationContextInput(
+            placeName = "Wat Phra That Doi Suthep",
+            rawUrl = "https://maps.app.goo.gl/Kwj5C5RbgNdf41zD6"
+        )
+
+        service.fetchLocationContextResults(input)
+
+        assertEquals("Wat Phra That Doi Suthep", capturedPlaceName)
+    }
+
+    @Test
+    fun testInvalidJavaScriptTextTriggersUrlResolution() = runTest {
+        var capturedPlaceName: String? = null
+        val trackingSource = object : com.example.data.contextengine.ContextSource {
+            override val sourceName: String = "TEST"
+            override val sourceType = com.example.data.contextengine.ContextSourceType.OFFICIAL_DATA
+            override suspend fun fetchContext(input: LocationContextInput): com.example.data.contextengine.ContextResult {
+                capturedPlaceName = input.placeName
+                return com.example.data.contextengine.ContextResult(
+                    sourceName = sourceName,
+                    sourceType = sourceType,
+                    isSuccessful = true,
+                    snippet = "Resolved place"
+                )
+            }
+        }
+
+        val service = GoogleMapsLocationContextService(ContextEngine(listOf(trackingSource)))
+        val input = LocationContextInput(
+            placeName = "Bitte aktivieren Sie JavaScript um Google Maps zu nutzen",
+            rawUrl = "https://www.google.com/maps/place/Brandenburger+Tor/"
+        )
+
+        service.fetchLocationContextResults(input)
+
+        assertEquals("Brandenburger Tor", capturedPlaceName)
+    }
+
+    @Test
+    fun testUnresolvableUrlHandledGracefullyWithoutCrash() = runTest {
+        var capturedPlaceName: String? = null
+        val trackingSource = object : com.example.data.contextengine.ContextSource {
+            override val sourceName: String = "TEST"
+            override val sourceType = com.example.data.contextengine.ContextSourceType.OFFICIAL_DATA
+            override suspend fun fetchContext(input: LocationContextInput): com.example.data.contextengine.ContextResult {
+                capturedPlaceName = input.placeName
+                return com.example.data.contextengine.ContextResult(
+                    sourceName = sourceName,
+                    sourceType = sourceType,
+                    isSuccessful = input.placeName.isNotBlank(),
+                    snippet = null
+                )
+            }
+        }
+
+        val service = GoogleMapsLocationContextService(ContextEngine(listOf(trackingSource)))
+        val input = LocationContextInput(
+            placeName = "Google Maps",
+            rawUrl = "https://invalid-non-maps-url.example.com/foo"
+        )
+
+        val results = service.fetchLocationContextResults(input)
+
+        assertEquals("", capturedPlaceName)
+        assertTrue(results.isNotEmpty())
+        assertFalse(results[0].isSuccessful)
+    }
+
+    @Test
+    fun testHappyFrogShortLinkWithGoogleMapsSuffixCleansTitleAndExecutesParser() = runTest {
+        var capturedInput: LocationContextInput? = null
+        val trackingSource = object : com.example.data.contextengine.ContextSource {
+            override val sourceName: String = "TEST"
+            override val sourceType = com.example.data.contextengine.ContextSourceType.OFFICIAL_DATA
+            override suspend fun fetchContext(input: LocationContextInput): com.example.data.contextengine.ContextResult {
+                capturedInput = input
+                return com.example.data.contextengine.ContextResult(
+                    sourceName = sourceName,
+                    sourceType = sourceType,
+                    isSuccessful = true,
+                    snippet = "Found place"
+                )
+            }
+        }
+
+        val service = GoogleMapsLocationContextService(ContextEngine(listOf(trackingSource)))
+        val input = LocationContextInput(
+            placeName = "The Happy Frog - Google Maps",
+            rawUrl = "https://maps.app.goo.gl/Kwj5C5RbgNdf41zD6"
+        )
+
+        service.fetchLocationContextResults(input)
+
+        assertTrue(capturedInput != null)
+        assertEquals("The Happy Frog", capturedInput!!.placeName)
+    }
+
+    @Test
+    fun testHappyFrogExpandedUrlExtractsCoordinatesAndPlaceName() = runTest {
+        var capturedInput: LocationContextInput? = null
+        val trackingSource = object : com.example.data.contextengine.ContextSource {
+            override val sourceName: String = "TEST"
+            override val sourceType = com.example.data.contextengine.ContextSourceType.OFFICIAL_DATA
+            override suspend fun fetchContext(input: LocationContextInput): com.example.data.contextengine.ContextResult {
+                capturedInput = input
+                return com.example.data.contextengine.ContextResult(
+                    sourceName = sourceName,
+                    sourceType = sourceType,
+                    isSuccessful = true,
+                    snippet = "Found place"
+                )
+            }
+        }
+
+        val service = GoogleMapsLocationContextService(ContextEngine(listOf(trackingSource)))
+        val input = LocationContextInput(
+            placeName = "The Happy Frog - Google Maps",
+            rawUrl = "https://www.google.com/maps/place/The+Happy+Frog/@-27.4682,153.0234,17z/"
+        )
+
+        service.fetchLocationContextResults(input)
+
+        assertTrue(capturedInput != null)
+        assertEquals("The Happy Frog", capturedInput!!.placeName)
+        assertEquals(-27.4682, capturedInput!!.latitude!!, 0.0001)
+        assertEquals(153.0234, capturedInput!!.longitude!!, 0.0001)
+    }
+
+    @Test
+    fun testValidExistingPlaceNameComplementedWithParserMetadata() = runTest {
+        var capturedInput: LocationContextInput? = null
+        val trackingSource = object : com.example.data.contextengine.ContextSource {
+            override val sourceName: String = "TEST"
+            override val sourceType = com.example.data.contextengine.ContextSourceType.OFFICIAL_DATA
+            override suspend fun fetchContext(input: LocationContextInput): com.example.data.contextengine.ContextResult {
+                capturedInput = input
+                return com.example.data.contextengine.ContextResult(
+                    sourceName = sourceName,
+                    sourceType = sourceType,
+                    isSuccessful = true,
+                    snippet = "Complemented metadata"
+                )
+            }
+        }
+
+        val service = GoogleMapsLocationContextService(ContextEngine(listOf(trackingSource)))
+        val input = LocationContextInput(
+            placeName = "Wat Phra That Doi Suthep",
+            rawUrl = "https://www.google.com/maps/place/Wat+Phra+That+Doi+Suthep/@18.80498,98.92158,17z/"
+        )
+
+        service.fetchLocationContextResults(input)
+
+        assertTrue(capturedInput != null)
+        assertEquals("Wat Phra That Doi Suthep", capturedInput!!.placeName)
+        assertEquals(18.80498, capturedInput!!.latitude!!, 0.0001)
+        assertEquals(98.92158, capturedInput!!.longitude!!, 0.0001)
+    }
+
+    @Test
+    fun testNonGoogleMapsUrlDoesNotInvokeParser() = runTest {
+        var capturedInput: LocationContextInput? = null
+        val trackingSource = object : com.example.data.contextengine.ContextSource {
+            override val sourceName: String = "TEST"
+            override val sourceType = com.example.data.contextengine.ContextSourceType.OFFICIAL_DATA
+            override suspend fun fetchContext(input: LocationContextInput): com.example.data.contextengine.ContextResult {
+                capturedInput = input
+                return com.example.data.contextengine.ContextResult(
+                    sourceName = sourceName,
+                    sourceType = sourceType,
+                    isSuccessful = true,
+                    snippet = "Non-maps URL"
+                )
+            }
+        }
+
+        val service = GoogleMapsLocationContextService(ContextEngine(listOf(trackingSource)))
+        val input = LocationContextInput(
+            placeName = "Berlin",
+            rawUrl = "https://example.com/berlin"
+        )
+
+        service.fetchLocationContextResults(input)
+
+        assertTrue(capturedInput != null)
+        assertEquals("Berlin", capturedInput!!.placeName)
+        assertEquals(null, capturedInput!!.latitude)
+        assertEquals(null, capturedInput!!.longitude)
+    }
+
+    @Test
+    fun testUnresolvableGoogleMapsUrlHandledGracefullyFallback() = runTest {
+        var capturedInput: LocationContextInput? = null
+        val trackingSource = object : com.example.data.contextengine.ContextSource {
+            override val sourceName: String = "TEST"
+            override val sourceType = com.example.data.contextengine.ContextSourceType.OFFICIAL_DATA
+            override suspend fun fetchContext(input: LocationContextInput): com.example.data.contextengine.ContextResult {
+                capturedInput = input
+                return com.example.data.contextengine.ContextResult(
+                    sourceName = sourceName,
+                    sourceType = sourceType,
+                    isSuccessful = true,
+                    snippet = "Fallback"
+                )
+            }
+        }
+
+        val service = GoogleMapsLocationContextService(ContextEngine(listOf(trackingSource)))
+        val input = LocationContextInput(
+            placeName = "The Happy Frog - Google Maps",
+            rawUrl = "https://maps.google.com/invalid_path_unresolvable_xyz"
+        )
+
+        service.fetchLocationContextResults(input)
+
+        assertTrue(capturedInput != null)
+        assertEquals("The Happy Frog", capturedInput!!.placeName)
+    }
+
+    @Test
+    fun testPlaceNameSuffixAndQuoteCleaning() = runTest {
+        val testCases = listOf(
+            "The Happy Frog - Google Maps" to "The Happy Frog",
+            "The Happy Frog – Google Maps" to "The Happy Frog",
+            "\"The Happy Frog\"" to "The Happy Frog",
+            "“The Happy Frog”" to "The Happy Frog",
+            "The Happy Frog | Google Maps" to "The Happy Frog"
+        )
+
+        val trackingSource = object : com.example.data.contextengine.ContextSource {
+            override val sourceName: String = "TEST"
+            override val sourceType = com.example.data.contextengine.ContextSourceType.OFFICIAL_DATA
+            override suspend fun fetchContext(input: LocationContextInput): com.example.data.contextengine.ContextResult {
+                return com.example.data.contextengine.ContextResult(
+                    sourceName = sourceName,
+                    sourceType = sourceType,
+                    isSuccessful = true,
+                    snippet = input.placeName
+                )
+            }
+        }
+
+        val service = GoogleMapsLocationContextService(ContextEngine(listOf(trackingSource)))
+
+        for ((raw, expected) in testCases) {
+            var capturedName: String? = null
+            val customSource = object : com.example.data.contextengine.ContextSource {
+                override val sourceName: String = "TEST"
+                override val sourceType = com.example.data.contextengine.ContextSourceType.OFFICIAL_DATA
+                override suspend fun fetchContext(input: LocationContextInput): com.example.data.contextengine.ContextResult {
+                    capturedName = input.placeName
+                    return com.example.data.contextengine.ContextResult(
+                        sourceName = sourceName,
+                        sourceType = sourceType,
+                        isSuccessful = true,
+                        snippet = input.placeName
+                    )
+                }
+            }
+            val customService = GoogleMapsLocationContextService(ContextEngine(listOf(customSource)))
+            customService.fetchLocationContextResults(LocationContextInput(placeName = raw, rawUrl = "https://example.com"))
+            assertEquals(expected, capturedName)
+        }
+    }
+
+    @Test
+    fun testRealisticWebInputExtractorIntegrationFlow() = runTest {
+        var capturedInput: LocationContextInput? = null
+        val trackingSource = object : com.example.data.contextengine.ContextSource {
+            override val sourceName: String = "TEST"
+            override val sourceType = com.example.data.contextengine.ContextSourceType.OFFICIAL_DATA
+            override suspend fun fetchContext(input: LocationContextInput): com.example.data.contextengine.ContextResult {
+                capturedInput = input
+                return com.example.data.contextengine.ContextResult(
+                    sourceName = sourceName,
+                    sourceType = sourceType,
+                    isSuccessful = true,
+                    snippet = "Integration test"
+                )
+            }
+        }
+
+        val service = GoogleMapsLocationContextService(ContextEngine(listOf(trackingSource)))
+        val extractorSimulatedInput = LocationContextInput(
+            placeName = "The Happy Frog - Google Maps",
+            description = "Find local businesses, view maps and get driving directions in Google Maps.",
+            rawUrl = "https://www.google.com/maps/place/The+Happy+Frog/@-27.4682,153.0234,17z/"
+        )
+
+        service.fetchLocationContextResults(extractorSimulatedInput)
+
+        assertTrue(capturedInput != null)
+        assertEquals("The Happy Frog", capturedInput!!.placeName)
+        assertEquals(-27.4682, capturedInput!!.latitude!!, 0.0001)
+        assertEquals(153.0234, capturedInput!!.longitude!!, 0.0001)
+    }
+
     private fun assertFalse(value: Boolean) {
         org.junit.Assert.assertFalse(value)
     }

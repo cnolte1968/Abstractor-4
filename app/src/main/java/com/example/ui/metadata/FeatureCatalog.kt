@@ -42,10 +42,10 @@ object FeatureCatalog {
     val categories: List<CategoryMetadata> = listOf(
         CategoryMetadata("A", "", "Verstehen & Verdichten", Icons.Default.AutoStories, Color(0xFF2563EB), 1),
         CategoryMetadata("B", "", "Qualität, Kritik & Einordnung", Icons.Default.Shield, Color(0xFF4F46E5), 2),
-        CategoryMetadata("E", "", "Arbeiten mit Dateien", Icons.Default.Folder, Color(0xFF0891B2), 3),
-        CategoryMetadata("D", "", "Inhalte verarbeiten", Icons.Default.Share, Color(0xFFD97706), 4),
-        CategoryMetadata("C", "", "Visualisierung", Icons.Default.Palette, Color(0xFF059669), 5),
-        CategoryMetadata("F", "", "Google Maps", Icons.Default.Place, Color(0xFFEA4335), 6)
+        CategoryMetadata("F", "", "Google Maps", Icons.Default.Place, Color(0xFFEA4335), 3),
+        CategoryMetadata("E", "", "Arbeiten mit Dateien", Icons.Default.Folder, Color(0xFF0891B2), 4),
+        CategoryMetadata("D", "", "Inhalte verarbeiten", Icons.Default.Share, Color(0xFFD97706), 5),
+        CategoryMetadata("C", "", "Visualisierung", Icons.Default.Palette, Color(0xFF059669), 6)
     ).sortedBy { it.sortOrder }
 
     val features: List<FeatureMetadata> = listOf(

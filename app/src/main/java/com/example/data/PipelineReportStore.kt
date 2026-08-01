@@ -84,6 +84,7 @@ object PipelineReportStore {
             "rendering" -> update(report.rendering)
             "user_actions" -> update(report.user_actions)
             "final_result" -> update(report.final_result)
+            "location_context" -> update(report.location_context)
         }
     }
 
@@ -899,12 +900,16 @@ object PipelineReportStore {
         }
     }
 
+    private val contributors: List<com.example.data.diagnostics.DiagnosticContributor> = listOf(
+        com.example.data.diagnostics.LocationContextDiagnosticContributor()
+    )
+
     @Synchronized
     fun getLastReportJson(): String {
         val report = lastReport
         if (report == null) {
             return "{\n  \"status\": \"NO_PIPELINE_REPORT_AVAILABLE\"\n}"
         }
-        return report.toJsonString()
+        return com.example.data.diagnostics.ReportSanitizer.buildAndSanitizeReport(report, contributors)
     }
 }

@@ -7,9 +7,9 @@ class PipelineReport {
     val metadata = mutableMapOf<String, Any?>(
         "timestamp" to "",
         "appVersion" to "1.0.0",
-        "device" to android.os.Build.MODEL,
-        "androidVersion" to android.os.Build.VERSION.RELEASE,
-        "apiLevel" to android.os.Build.VERSION.SDK_INT,
+        "device" to try { android.os.Build.MODEL ?: "UNKNOWN" } catch (e: Throwable) { "TEST_DEVICE" },
+        "androidVersion" to try { android.os.Build.VERSION.RELEASE ?: "14" } catch (e: Throwable) { "14" },
+        "apiLevel" to try { android.os.Build.VERSION.SDK_INT } catch (e: Throwable) { 34 },
         "networkType" to "UNKNOWN",
         "runId" to "",
         "correlationId" to "",
@@ -306,6 +306,20 @@ class PipelineReport {
         "rootCauseCandidate" to "",
         "nextDiagnosticHint" to "",
         "pipelineCompleted" to false
+    )
+
+    val location_context = mutableMapOf<String, Any?>(
+        "originalUrl" to "",
+        "normalizedUrl" to "",
+        "incomingPlaceName" to "",
+        "resolvedPlaceName" to "",
+        "parserStatus" to "NOT_RUN",
+        "wikipediaStatus" to "NOT_RUN",
+        "wikivoyageStatus" to "NOT_RUN",
+        "googleMapsBaseStatus" to "NOT_RUN",
+        "fallbackUsed" to false,
+        "generatedContextSections" to listOf<String>(),
+        "noContextFound" to false
     )
 
     val steps = mutableListOf<PipelineStep>()

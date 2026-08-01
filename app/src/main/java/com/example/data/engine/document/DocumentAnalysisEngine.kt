@@ -17,7 +17,7 @@ class DocumentAnalysisEngine(
     override val contract: EngineContract = EngineContract(
         functionId = "DOCUMENT_SUMMARY",
         version = "1.0.0",
-        inputSchema = "CanonicalAnalysisInput(rawBytes!=null)",
+        inputSchema = "CanonicalAnalysisInput(rawBytes!=null || enrichedText!=null)",
         outputSchema = "DomainSummary(title, original_url, short_description, key_takeaways)",
         capabilities = EngineCapabilities(
             name = "Document Analysis",

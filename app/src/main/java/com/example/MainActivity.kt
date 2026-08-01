@@ -123,7 +123,7 @@ fun buildShareText(
 // ----------------------------------------------------------------------------------
 
 enum class AppTab {
-    START, VERLAUF, FAVORITEN, PRO
+    START, VERLAUF, FAVORITEN
 }
 
 data class FunctionInfo(
@@ -271,6 +271,7 @@ fun RelevantorApp(viewModel: MainViewModel) {
     var selectedTab by rememberSaveable { mutableStateOf(AppTab.START) }
     var activeCategory by remember { mutableStateOf(categoriesList[0]) }
     var activeFunction by remember { mutableStateOf<FunctionInfo?>(null) }
+    var showEmptyUrlNotice by remember { mutableStateOf(false) }
     
     // Default favorites list
     val favoritesList by viewModel.favoritesList.collectAsState()
@@ -300,19 +301,25 @@ fun RelevantorApp(viewModel: MainViewModel) {
         if (func.isPlaceholder) {
             placeholderToShowAlert = func
         } else {
-            activeFunction = func
-            if (func.type != null) {
-                viewModel.setAnalysisType(func.type)
-            }
             if (func.acceptedInputs.contains(com.example.ui.metadata.AcceptedInput.DOCUMENT)) {
+                activeFunction = func
+                if (func.type != null) {
+                    viewModel.setAnalysisType(func.type)
+                }
                 filePickerLauncher.launch("*/*")
             } else if (func.acceptedInputs.contains(com.example.ui.metadata.AcceptedInput.IMAGE)) {
+                activeFunction = func
+                if (func.type != null) {
+                    viewModel.setAnalysisType(func.type)
+                }
                 filePickerLauncher.launch("image/*")
-            } else if (urlInput.isBlank()) {
-                // If url is blank, keep on start page but set active function
-                selectedTab = AppTab.START
+            } else if (urlInput.trim().isEmpty()) {
+                showEmptyUrlNotice = true
             } else {
-                // If url is set, trigger analysis
+                activeFunction = func
+                if (func.type != null) {
+                    viewModel.setAnalysisType(func.type)
+                }
                 if (func.type?.canonical() == com.example.data.AnalysisType.FREE_SOURCE_QUERY) {
                     showFreeQueryDialog = true
                 } else {
@@ -325,6 +332,24 @@ fun RelevantorApp(viewModel: MainViewModel) {
                 }
             }
         }
+    }
+
+    if (showEmptyUrlNotice) {
+        AlertDialog(
+            onDismissRequest = { showEmptyUrlNotice = false },
+            title = { Text("Hinweis") },
+            text = {
+                Text(
+                    "Bitte zuerst eine URL eingeben oder einen Link aus einer anderen App über „Teilen“ an Relevantor senden.",
+                    fontSize = 14.sp
+                )
+            },
+            confirmButton = {
+                Button(onClick = { showEmptyUrlNotice = false }) {
+                    Text("OK")
+                }
+            }
+        )
     }
 
     if (placeholderToShowAlert != null) {
@@ -578,8 +603,7 @@ fun TabletLayout(
                 )
             }
 
-            // Bottom Pro Card
-            ProPlanCard()
+            // Sidebar content
         }
 
         // Divider
@@ -881,38 +905,6 @@ fun SmartphoneLayout(
                             unselectedTextColor = Color.Gray
                         )
                     )
-
-                    NavigationBarItem(
-                        selected = selectedTab == AppTab.PRO,
-                        onClick = { 
-                            selectedCategoryForDetailId = null
-                            onTabChange(AppTab.PRO) 
-                        },
-                        alwaysShowLabel = true,
-                        icon = { 
-                            Icon(
-                                if (selectedTab == AppTab.PRO) Icons.Filled.Stars else Icons.Outlined.Stars, 
-                                contentDescription = null,
-                                modifier = Modifier.size(22.dp)
-                            ) 
-                        },
-                        label = { 
-                            Text(
-                                text = "Pro", 
-                                fontWeight = if (selectedTab == AppTab.PRO) FontWeight.Bold else FontWeight.Medium,
-                                fontSize = 11.sp,
-                                maxLines = 1,
-                                softWrap = false
-                            ) 
-                        },
-                        colors = NavigationBarItemDefaults.colors(
-                            selectedIconColor = MaterialTheme.colorScheme.primary,
-                            selectedTextColor = MaterialTheme.colorScheme.primary,
-                            indicatorColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.16f),
-                            unselectedIconColor = Color.Gray,
-                            unselectedTextColor = Color.Gray
-                        )
-                    )
                 }
             }
         }
@@ -936,10 +928,10 @@ fun SmartphoneLayout(
                             val orderedCategories = listOf(
                                 categoriesList.find { it.id == "A" },
                                 categoriesList.find { it.id == "B" },
+                                categoriesList.find { it.id == "F" },
                                 categoriesList.find { it.id == "E" },
                                 categoriesList.find { it.id == "D" },
-                                categoriesList.find { it.id == "C" },
-                                categoriesList.find { it.id == "F" }
+                                categoriesList.find { it.id == "C" }
                             ).filterNotNull()
 
                             LazyColumn(
@@ -1223,10 +1215,6 @@ fun SmartphoneLayout(
                                     }
                                 }
 
-                                // Pro Plan Usage indicator
-                                item {
-                                    ProPlanCard()
-                                }
                             }
                         }
                         AppTab.VERLAUF -> {
@@ -1243,12 +1231,6 @@ fun SmartphoneLayout(
                                     onMoveUp = { viewModel.moveFavoriteUp(it) },
                                     onMoveDown = { viewModel.moveFavoriteDown(it) }
                                 )
-                            }
-                        }
-
-                        AppTab.PRO -> {
-                            Box(modifier = Modifier.fillMaxSize().padding(16.dp)) {
-                                AccountSettingsScreen(viewModel, authStatus)
                             }
                         }
                     }
@@ -1750,9 +1732,6 @@ fun ProcessingScreen(
                         Text(activeFunction.name, fontWeight = FontWeight.Bold, fontSize = 16.sp)
                         Text("Quelle wird verarbeitet...", fontSize = 11.sp, color = Color.Gray)
                     }
-                    IconButton(onClick = {}) {
-                        Icon(Icons.Default.MoreVert, contentDescription = null)
-                    }
                 }
             }
         }
@@ -1858,14 +1837,6 @@ fun ProcessingScreen(
                             color = activeCategory.color
                         )
                     }
-                }
-
-                Spacer(modifier = Modifier.height(4.dp))
-
-                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.Center) {
-                    Icon(Icons.Default.Lock, contentDescription = null, tint = Color.Gray, modifier = Modifier.size(12.dp))
-                    Spacer(modifier = Modifier.width(6.dp))
-                    Text("Deine Daten sind sicher und werden nicht gespeichert.", fontSize = 11.sp, color = Color.Gray)
                 }
             }
         }
@@ -1993,16 +1964,13 @@ fun ResultScreen(
     val scope = rememberCoroutineScope()
 
     var showMenu by remember { mutableStateOf(false) }
-    var showDebugDataDialog by remember { mutableStateOf(false) }
+    var showBasisReportDialog by remember { mutableStateOf(false) }
     var showPreflightDialog by remember { mutableStateOf(false) }
     var isTestingPreflight by remember { mutableStateOf(false) }
     var preflightReport by remember { mutableStateOf<com.example.data.PreflightReport?>(null) }
     var showSmokeDialog by remember { mutableStateOf(false) }
     var isRunningSmokeTests by remember { mutableStateOf(false) }
     var smokeTestReport by remember { mutableStateOf<com.example.data.SmokeTestHarnessReport?>(null) }
-    var showLocationContextDialog by remember { mutableStateOf(false) }
-    var isRunningLocationContextDiagnosis by remember { mutableStateOf(false) }
-    var locationContextReport by remember { mutableStateOf<com.example.data.contextengine.LocationContextDiagnosticReport?>(null) }
 
     Scaffold(
         topBar = {
@@ -2049,22 +2017,12 @@ fun ResultScreen(
                             onDismissRequest = { showMenu = false }
                         ) {
                             DropdownMenuItem(
-                                text = { Text("Diagnose-Daten anzeigen (Dev)") },
+                                text = { Text("Basis-Diagnose-Report (Dev)") },
                                 onClick = {
                                     showMenu = false
-                                    showDebugDataDialog = true
+                                    showBasisReportDialog = true
                                 },
                                 leadingIcon = { Icon(Icons.Default.Info, contentDescription = null) }
-                            )
-                            DropdownMenuItem(
-                                text = { Text("Copy PR") },
-                                onClick = {
-                                    showMenu = false
-                                    val json = com.example.data.PipelineReportStore.getLastReportJson()
-                                    clipboardManager.setText(AnnotatedString(json))
-                                    Toast.makeText(context, "Pipeline Report (JSON) kopiert!", Toast.LENGTH_SHORT).show()
-                                },
-                                leadingIcon = { Icon(Icons.Default.ContentCopy, contentDescription = null) }
                             )
                             DropdownMenuItem(
                                 text = { Text("Smoke-Test ausführen (Dev)") },
@@ -2097,25 +2055,6 @@ fun ResultScreen(
                                     }
                                 },
                                 leadingIcon = { Icon(Icons.Default.NetworkCheck, contentDescription = null) }
-                            )
-                            DropdownMenuItem(
-                                text = { Text("Location Context Diagnose (Dev)") },
-                                onClick = {
-                                    showMenu = false
-                                    isRunningLocationContextDiagnosis = true
-                                    scope.launch(kotlinx.coroutines.Dispatchers.IO) {
-                                        val report = com.example.data.contextengine.LocationContextDiagnosticRunner.runDiagnosis(
-                                            context = context,
-                                            inputUrl = summary.originalUrl.ifBlank { "https://maps.google.com/?q=Wat+Phra+That+Doi+Suthep" }
-                                        )
-                                        kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
-                                            locationContextReport = report
-                                            showLocationContextDialog = true
-                                            isRunningLocationContextDiagnosis = false
-                                        }
-                                    }
-                                },
-                                leadingIcon = { Icon(Icons.Default.Place, contentDescription = null) }
                             )
                         }
                     }
@@ -2318,119 +2257,39 @@ fun ResultScreen(
         )
     }
 
-    // Debug data dialog
-    if (showDebugDataDialog) {
-        val maxDetailsLength = summary.keyTakeaways.maxOfOrNull { it.details.length } ?: 0
-        val appVersion = try {
-            context.packageManager.getPackageInfo(context.packageName, 0).versionName ?: "1.0.0"
-        } catch (e: Exception) {
-            "1.0.0"
-        }
-
+    // Basis-Diagnose-Report Dialog (Dev)
+    if (showBasisReportDialog) {
+        val jsonReport = com.example.data.PipelineReportStore.getLastReportJson()
         AlertDialog(
-            onDismissRequest = { showDebugDataDialog = false },
-            title = { Text("Diagnose & Debug-Daten", fontWeight = FontWeight.Bold, fontSize = 18.sp) },
-            text = {
-                Box(modifier = Modifier.heightIn(max = 400.dp)) {
-                    Column(
-                        modifier = Modifier
-                            .verticalScroll(rememberScrollState())
-                            .fillMaxWidth(),
-                        verticalArrangement = Arrangement.spacedBy(4.dp)
-                    ) {
-                        DebugRow("analysisType", activeFunction.type?.name ?: "UNKNOWN")
-                        DebugRow("canonicalAnalysisType", activeFunction.type?.canonical()?.name ?: "UNKNOWN")
-                        DebugRow("functionId", activeFunction.id)
-                        DebugRow("sourceUrl", summary.originalUrl)
-                        DebugRow("promptAssetFile", com.example.data.GatewayDiagnostics.loadedPromptAssetFile.ifBlank { "prompts/F_STANDARD_WEBSEITE.md" })
-                        DebugRow("promptSha256", com.example.data.GatewayDiagnostics.loadedPromptSha256.ifBlank { "N/A" })
-                        DebugRow("finalUserContentLength", "${com.example.data.GatewayDiagnostics.textAfterCleaningLength}")
-                        DebugRow("selectedContentContainer", com.example.data.GatewayDiagnostics.selectedContentContainer.ifBlank { "none" })
-                        DebugRow("textAfterCleaningLength", "${com.example.data.GatewayDiagnostics.textAfterCleaningLength}")
-                        DebugRow("keyTakeawayCount", "${summary.keyTakeaways.size}")
-                        DebugRow("maxDetailsLength", "$maxDetailsLength")
-                        DebugRow("contractValidationStatus", "PASS")
-                        DebugRow("timestamp", summary.timestamp)
-                        DebugRow("appVersion", appVersion)
-                    }
-                }
-            },
-            confirmButton = {
-                Button(onClick = { showDebugDataDialog = false }) {
-                    Text("Schließen")
-                }
-            },
-            dismissButton = {
-                TextButton(onClick = {
-                    val debugJson = buildDebugJson(summary, activeFunction, context)
-                    clipboardManager.setText(AnnotatedString(debugJson))
-                    Toast.makeText(context, "Debug-Daten kopiert!", Toast.LENGTH_SHORT).show()
-                }) {
-                    Text("Kopieren")
-                }
-            }
-        )
-    }
-
-    // Location Context Diagnostics Dialog
-    if (showLocationContextDialog && locationContextReport != null) {
-        val report = locationContextReport!!
-        AlertDialog(
-            onDismissRequest = { showLocationContextDialog = false },
-            title = { Text("Location Context Diagnose (Dev)", fontWeight = FontWeight.Bold, fontSize = 18.sp) },
+            onDismissRequest = { showBasisReportDialog = false },
+            title = { Text("Basis-Diagnose-Report (Dev)", fontWeight = FontWeight.Bold, fontSize = 18.sp) },
             text = {
                 Box(modifier = Modifier.heightIn(max = 420.dp)) {
                     Column(
                         modifier = Modifier
                             .verticalScroll(rememberScrollState())
-                            .fillMaxWidth(),
-                        verticalArrangement = Arrangement.spacedBy(6.dp)
+                            .fillMaxWidth()
                     ) {
-                        DebugRow("1. Input URL", report.inputUrl)
-                        DebugRow("2. Ort / Place", report.placeName)
-                        DebugRow("   Place Details", report.placeData)
-                        DebugRow("3. AnalysisType", report.analysisType)
-                        DebugRow("4. Prompt Pfad", report.loadedPromptPath)
-                        DebugRow("   Prompt SHA256", report.loadedPromptSha256.take(16) + "...")
-                        DebugRow("5. Service Aufruf", report.serviceCallStatus)
-                        DebugRow("6. ContextEngine Status", report.contextEngineStatus)
-                        DebugRow("7. Wikipedia Status", report.wikipediaResultStatus)
-                        DebugRow("   Wikipedia Titel", report.wikipediaResultTitle)
-                        DebugRow("   Wikipedia Zeichen", "${report.wikipediaResultCharCount}")
-                        DebugRow("8. Wikivoyage Status", report.wikivoyageResultStatus)
-                        DebugRow("   Wikivoyage Titel", report.wikivoyageResultTitle)
-                        DebugRow("   Wikivoyage Zeichen", "${report.wikivoyageResultCharCount}")
-                        DebugRow("9. Gemini Injection", "${report.geminiContextInjectionLength} Zeichen")
-                        DebugRow("   Fakten-Abschnitt", if (report.geminiContextInjectionHasFacts) "VORHANDEN" else "FEHLT")
-                        DebugRow("   Reisekontext-Abschnitt", if (report.geminiContextInjectionHasTravelContext) "VORHANDEN" else "FEHLT")
-                        DebugRow("10. Contract Status", report.finalContractStatus)
-
-                        Spacer(modifier = Modifier.height(8.dp))
-                        Text("Vorschau Context Injection:", fontWeight = FontWeight.Bold, fontSize = 12.sp)
-                        Surface(
-                            color = Color(0xFFF1F5F9),
-                            shape = RoundedCornerShape(8.dp),
-                            modifier = Modifier.fillMaxWidth().padding(top = 4.dp)
-                        ) {
+                        androidx.compose.foundation.text.selection.SelectionContainer {
                             Text(
-                                text = report.geminiContextInjectionPreview,
+                                text = jsonReport,
                                 fontSize = 11.sp,
                                 fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace,
-                                modifier = Modifier.padding(8.dp)
+                                color = Color(0xFF1E293B)
                             )
                         }
                     }
                 }
             },
             confirmButton = {
-                Button(onClick = { showLocationContextDialog = false }) {
+                Button(onClick = { showBasisReportDialog = false }) {
                     Text("Schließen")
                 }
             },
             dismissButton = {
                 TextButton(onClick = {
-                    clipboardManager.setText(AnnotatedString(report.toFormattedString()))
-                    Toast.makeText(context, "Diagnose-Report kopiert!", Toast.LENGTH_SHORT).show()
+                    clipboardManager.setText(AnnotatedString(jsonReport))
+                    Toast.makeText(context, "Pipeline Report (JSON) kopiert!", Toast.LENGTH_SHORT).show()
                 }) {
                     Text("Kopieren")
                 }
@@ -2808,7 +2667,7 @@ fun ErrorScreen(
                                     horizontalArrangement = Arrangement.spacedBy(8.dp)
                                 ) {
                                     Icon(Icons.Default.ContentCopy, contentDescription = null, modifier = Modifier.size(16.dp))
-                                    Text("Copy PR (Pipeline Report)", fontSize = 13.sp)
+                                    Text("Basis-Report kopieren", fontSize = 13.sp)
                                 }
                             }
                         }

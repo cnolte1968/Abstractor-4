@@ -20,8 +20,24 @@ data class Part(
 )
 
 @JsonClass(generateAdapter = true)
+data class SafetyRating(
+    val category: String? = null,
+    val probability: String? = null,
+    val blocked: Boolean? = null
+)
+
+@JsonClass(generateAdapter = true)
+data class PromptFeedback(
+    @Json(name = "block_reason") val blockReasonSnake: String? = null,
+    val blockReason: String? = null,
+    val safetyRatings: List<SafetyRating> = emptyList()
+) {
+    val resolvedBlockReason: String? get() = blockReason ?: blockReasonSnake
+}
+
+@JsonClass(generateAdapter = true)
 data class Content(
-    val parts: List<Part>,
+    val parts: List<Part> = emptyList(),
     val role: String? = null
 )
 
@@ -65,12 +81,27 @@ data class GenerateContentRequest(
 
 @JsonClass(generateAdapter = true)
 data class Candidate(
-    val content: Content? = null
+    val content: Content? = null,
+    @Json(name = "finish_reason") val finishReasonSnake: String? = null,
+    val finishReason: String? = null,
+    val safetyRatings: List<SafetyRating> = emptyList(),
+    val index: Int? = null
+) {
+    val resolvedFinishReason: String? get() = finishReason ?: finishReasonSnake
+}
+
+@JsonClass(generateAdapter = true)
+data class UsageMetadata(
+    @Json(name = "promptTokenCount") val promptTokenCount: Int? = null,
+    @Json(name = "candidatesTokenCount") val candidatesTokenCount: Int? = null,
+    @Json(name = "totalTokenCount") val totalTokenCount: Int? = null
 )
 
 @JsonClass(generateAdapter = true)
 data class GenerateContentResponse(
-    val candidates: List<Candidate>? = null
+    val candidates: List<Candidate> = emptyList(),
+    val promptFeedback: PromptFeedback? = null,
+    val usageMetadata: UsageMetadata? = null
 )
 
 @JsonClass(generateAdapter = true)

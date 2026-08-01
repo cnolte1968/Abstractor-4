@@ -20,11 +20,24 @@ data class EngineContract(
     val customValidator: ContractValidator? = null
 ) {
     fun validateInput(input: CanonicalAnalysisInput) {
-        if (inputSchema == "CanonicalAnalysisInput(rawBytes!=null)") {
+        if (inputSchema == "CanonicalAnalysisInput(rawBytes!=null || enrichedText!=null)") {
+            val hasBytes = input.rawBytes != null && input.rawBytes.isNotEmpty()
+            val hasText = !input.enrichedText.isNullOrBlank()
+            if (!hasBytes && !hasText) {
+                throw IllegalStateException("Contract violation: input schema requires rawBytes!=null or enrichedText!=null for functionId: $functionId")
+            }
+        } else if (inputSchema == "CanonicalAnalysisInput(rawBytes!=null)") {
             if (input.rawBytes == null || input.rawBytes.isEmpty()) {
                 throw IllegalStateException("Contract violation: input schema requires non-null/non-empty rawBytes for functionId: $functionId")
             }
-        } else if (inputSchema == "CanonicalAnalysisInput(enrichedText!=null)") {
+        } else if (inputSchema == "CanonicalAnalysisInput(imageBytes!=null)" || inputSchema == "IMAGE_BYTES_REQUIRED") {
+            if (input.rawBytes == null || input.rawBytes.isEmpty()) {
+                throw IllegalStateException("Contract violation: input schema requires non-null/non-empty rawBytes for functionId: $functionId")
+            }
+            if (input.mimeType.isNullOrBlank() || !input.mimeType.startsWith("image/")) {
+                throw IllegalStateException("Contract violation: input schema requires valid image/ MIME type for functionId: $functionId")
+            }
+        } else if (inputSchema == "CanonicalAnalysisInput(enrichedText!=null)" || inputSchema == "TEXT_INPUT_REQUIRED") {
             if (input.enrichedText.isNullOrBlank()) {
                 throw IllegalStateException("Contract violation: input schema requires non-null/non-empty enrichedText for functionId: $functionId")
             }

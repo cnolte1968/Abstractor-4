@@ -5,7 +5,9 @@ import androidx.test.core.app.ApplicationProvider
 import com.example.data.AnalysisType
 import com.example.data.WebpageExtractor
 import com.example.data.repository.ContentExtractionRepositoryImpl
+import com.example.domain.model.CanonicalAnalysisInput
 import com.example.domain.model.ContentExtractionResult
+import com.example.domain.model.SourceType
 import okhttp3.MediaType.Companion.toMediaTypeOrNull
 import okhttp3.OkHttpClient
 import okhttp3.Protocol
@@ -554,6 +556,128 @@ class ContentExtractionRegressionTest {
         // 3. Verify the engine contract maps correctly
         assertEquals("PHOTO_SCREENSHOT_ANALYSIS", engine!!.contract.functionId)
         assertEquals("prompts/F_PHOTO_SCREENSHOT_ANALYSIS.md", engine.contract.promptPath)
+        assertEquals("CanonicalAnalysisInput(imageBytes!=null)", engine.contract.inputSchema)
+    }
+
+    @Test
+    fun testPhotoScreenshotAnalysisContractValidation_PNG_JPEG_Pass() {
+        val gateway = com.example.data.GeminiRepository
+        val registry = com.example.data.engine.AnalysisRegistryImpl(gateway, context)
+        val engine = registry.getEngine("PHOTO_SCREENSHOT_ANALYSIS")!!
+
+        // PNG test
+        val pngInput = CanonicalAnalysisInput(
+            sourceType = SourceType.DOCUMENT,
+            rawText = "",
+            enrichedText = "",
+            rawBytes = byteArrayOf(1, 2, 3, 4),
+            mimeType = "image/png",
+            analysisId = UUID.randomUUID().toString(),
+            analysisType = AnalysisType.PHOTO_SCREENSHOT_ANALYSIS
+        )
+        engine.contract.validateInput(pngInput) // Should PASS without exception
+
+        // JPEG test
+        val jpegInput = CanonicalAnalysisInput(
+            sourceType = SourceType.DOCUMENT,
+            rawText = "",
+            enrichedText = "",
+            rawBytes = byteArrayOf(5, 6, 7, 8),
+            mimeType = "image/jpeg",
+            analysisId = UUID.randomUUID().toString(),
+            analysisType = AnalysisType.PHOTO_SCREENSHOT_ANALYSIS
+        )
+        engine.contract.validateInput(jpegInput) // Should PASS without exception
+    }
+
+    @Test
+    fun testPhotoScreenshotAnalysisContractValidation_FailCases() {
+        val gateway = com.example.data.GeminiRepository
+        val registry = com.example.data.engine.AnalysisRegistryImpl(gateway, context)
+        val engine = registry.getEngine("PHOTO_SCREENSHOT_ANALYSIS")!!
+
+        // Empty bytes
+        val emptyBytesInput = CanonicalAnalysisInput(
+            sourceType = SourceType.DOCUMENT,
+            rawText = "",
+            enrichedText = "",
+            rawBytes = byteArrayOf(),
+            mimeType = "image/png",
+            analysisId = UUID.randomUUID().toString(),
+            analysisType = AnalysisType.PHOTO_SCREENSHOT_ANALYSIS
+        )
+        try {
+            engine.contract.validateInput(emptyBytesInput)
+            fail("Should fail on empty bytes")
+        } catch (e: IllegalStateException) {
+            assertTrue(e.message?.contains("non-null/non-empty rawBytes") == true)
+        }
+
+        // Invalid MIME type
+        val invalidMimeInput = CanonicalAnalysisInput(
+            sourceType = SourceType.DOCUMENT,
+            rawText = "",
+            enrichedText = "",
+            rawBytes = byteArrayOf(1, 2, 3),
+            mimeType = "application/pdf",
+            analysisId = UUID.randomUUID().toString(),
+            analysisType = AnalysisType.PHOTO_SCREENSHOT_ANALYSIS
+        )
+        try {
+            engine.contract.validateInput(invalidMimeInput)
+            fail("Should fail on invalid mime type")
+        } catch (e: IllegalStateException) {
+            assertTrue(e.message?.contains("valid image/ MIME type") == true)
+        }
+
+        // Null rawBytes
+        val nullBytesInput = CanonicalAnalysisInput(
+            sourceType = SourceType.DOCUMENT,
+            rawText = "",
+            enrichedText = "",
+            rawBytes = null,
+            mimeType = "image/png",
+            analysisId = UUID.randomUUID().toString(),
+            analysisType = AnalysisType.PHOTO_SCREENSHOT_ANALYSIS
+        )
+        try {
+            engine.contract.validateInput(nullBytesInput)
+            fail("Should fail on null rawBytes")
+        } catch (e: IllegalStateException) {
+            assertTrue(e.message?.contains("non-null/non-empty rawBytes") == true)
+        }
+    }
+
+    @Test
+    fun testTextFunctionsContractValidation_Regression() {
+        val gateway = com.example.data.GeminiRepository
+        val registry = com.example.data.engine.AnalysisRegistryImpl(gateway, context)
+        val webEngine = registry.getEngine("WEB_SUMMARY")!!
+
+        // Text function without enrichedText should FAIL
+        val noEnrichedInput = CanonicalAnalysisInput(
+            sourceType = SourceType.WEB,
+            rawText = "",
+            enrichedText = "",
+            analysisId = UUID.randomUUID().toString(),
+            analysisType = AnalysisType.WEB_SUMMARY
+        )
+        try {
+            webEngine.contract.validateInput(noEnrichedInput)
+            fail("Should fail on empty enrichedText for text function")
+        } catch (e: IllegalStateException) {
+            assertTrue(e.message?.contains("non-null/non-empty enrichedText") == true)
+        }
+
+        // Text function with enrichedText should PASS
+        val validTextInput = CanonicalAnalysisInput(
+            sourceType = SourceType.WEB,
+            rawText = "Hello",
+            enrichedText = "Hello world enriched",
+            analysisId = UUID.randomUUID().toString(),
+            analysisType = AnalysisType.WEB_SUMMARY
+        )
+        webEngine.contract.validateInput(validTextInput) // Should PASS
     }
 
     @Test
@@ -908,5 +1032,138 @@ class ContentExtractionRegressionTest {
         val reportJson = com.example.data.PipelineReportStore.getLastReportJson()
         assertTrue("Report must indicate DEGRADED final status", reportJson.contains("\"finalStatus\": \"DEGRADED\""))
         assertTrue("Report must have technical error category", reportJson.contains("\"technicalErrorCategory\": \"TRANSCRIPT_UNAVAILABLE\""))
+    }
+
+    @Test
+    fun testDocumentSummaryContractValidation_OfficeFiles_Pass() {
+        val gateway = com.example.data.GeminiRepository
+        val registry = com.example.data.engine.AnalysisRegistryImpl(gateway, context)
+        val engine = registry.getEngine("DOCUMENT_SUMMARY")!!
+
+        assertEquals("CanonicalAnalysisInput(rawBytes!=null || enrichedText!=null)", engine.contract.inputSchema)
+
+        // A. DOCX
+        val docxInput = CanonicalAnalysisInput(
+            sourceType = SourceType.DOCUMENT,
+            rawText = "DOCX Content",
+            enrichedText = "Docx text paragraph summary content",
+            rawBytes = null,
+            mimeType = "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+            analysisId = UUID.randomUUID().toString(),
+            analysisType = AnalysisType.DOKUMENTE
+        )
+        engine.contract.validateInput(docxInput) // Should PASS
+
+        // B. PPTX
+        val pptxInput = CanonicalAnalysisInput(
+            sourceType = SourceType.DOCUMENT,
+            rawText = "PPTX Content",
+            enrichedText = "Pptx slide title and bullet points content",
+            rawBytes = null,
+            mimeType = "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+            analysisId = UUID.randomUUID().toString(),
+            analysisType = AnalysisType.DOKUMENTE
+        )
+        engine.contract.validateInput(pptxInput) // Should PASS
+
+        // C. XLSX
+        val xlsxInput = CanonicalAnalysisInput(
+            sourceType = SourceType.DOCUMENT,
+            rawText = "XLSX Content",
+            enrichedText = "Sheet1: Cell A1 Data, Cell B1 Data",
+            rawBytes = null,
+            mimeType = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            analysisId = UUID.randomUUID().toString(),
+            analysisType = AnalysisType.DOKUMENTE
+        )
+        engine.contract.validateInput(xlsxInput) // Should PASS
+    }
+
+    @Test
+    fun testDocumentSummaryContractValidation_PdfAndTxt_Pass() {
+        val gateway = com.example.data.GeminiRepository
+        val registry = com.example.data.engine.AnalysisRegistryImpl(gateway, context)
+        val engine = registry.getEngine("DOCUMENT_SUMMARY")!!
+
+        // D. PDF with rawBytes
+        val pdfInput = CanonicalAnalysisInput(
+            sourceType = SourceType.DOCUMENT,
+            rawText = "",
+            enrichedText = "",
+            rawBytes = byteArrayOf(0x25, 0x50, 0x44, 0x46), // %PDF
+            mimeType = "application/pdf",
+            analysisId = UUID.randomUUID().toString(),
+            analysisType = AnalysisType.DOKUMENTE
+        )
+        engine.contract.validateInput(pdfInput) // Should PASS
+
+        // E. TXT with enrichedText
+        val txtInput = CanonicalAnalysisInput(
+            sourceType = SourceType.DOCUMENT,
+            rawText = "Plain text content",
+            enrichedText = "Plain text content enriched",
+            rawBytes = null,
+            mimeType = "text/plain",
+            analysisId = UUID.randomUUID().toString(),
+            analysisType = AnalysisType.DOKUMENTE
+        )
+        engine.contract.validateInput(txtInput) // Should PASS
+    }
+
+    @Test
+    fun testDocumentSummaryContractValidation_InvalidInput_Fail() {
+        val gateway = com.example.data.GeminiRepository
+        val registry = com.example.data.engine.AnalysisRegistryImpl(gateway, context)
+        val engine = registry.getEngine("DOCUMENT_SUMMARY")!!
+
+        // F. Invalid input: null rawBytes and empty enrichedText
+        val emptyInput = CanonicalAnalysisInput(
+            sourceType = SourceType.DOCUMENT,
+            rawText = "",
+            enrichedText = "",
+            rawBytes = null,
+            mimeType = "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+            analysisId = UUID.randomUUID().toString(),
+            analysisType = AnalysisType.DOKUMENTE
+        )
+        try {
+            engine.contract.validateInput(emptyInput)
+            fail("Should fail when both rawBytes and enrichedText are empty/null")
+        } catch (e: IllegalStateException) {
+            assertTrue(e.message?.contains("requires rawBytes!=null or enrichedText!=null") == true)
+        }
+    }
+
+    @Test
+    fun testRealisticOfficeDocumentFlowSimulation() {
+        val gateway = com.example.data.GeminiRepository
+        val registry = com.example.data.engine.AnalysisRegistryImpl(gateway, context)
+
+        // Simulate extraction result for an Office file
+        val extractedOfficeText = "Title: Q3 Report\nSummary: Sales increased by 15%."
+        val simulatedInput = CanonicalAnalysisInput(
+            sourceType = SourceType.DOCUMENT,
+            rawText = extractedOfficeText,
+            enrichedText = extractedOfficeText,
+            rawBytes = null, // Extracted locally, so rawBytes is null
+            mimeType = "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+            analysisId = UUID.randomUUID().toString(),
+            analysisType = AnalysisType.DOCUMENT_SUMMARY,
+            metadata = mapOf(
+                "fileName" to "q3_report.docx",
+                "detectedType" to "DOCX"
+            )
+        )
+
+        // 1. Engine resolution
+        val fid = registry.getFunctionIdForType(simulatedInput.analysisType)
+        assertEquals("DOCUMENT_SUMMARY", fid)
+
+        val engine = registry.getEngine(fid)
+        assertNotNull("Engine must be found for DOCUMENT_SUMMARY", engine)
+
+        // 2. Input contract validation
+        engine!!.contract.validateInput(simulatedInput) // Must PASS without exception
+        assertEquals("CanonicalAnalysisInput(rawBytes!=null || enrichedText!=null)", engine.contract.inputSchema)
     }
 }

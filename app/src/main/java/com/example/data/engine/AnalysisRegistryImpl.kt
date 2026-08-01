@@ -56,14 +56,19 @@ class AnalysisRegistryImpl(
         )
 
         for ((fid, name, path) in webFunctions) {
+            val inputSchema = if (fid == "PHOTO_SCREENSHOT_ANALYSIS") {
+                "CanonicalAnalysisInput(imageBytes!=null)"
+            } else {
+                "CanonicalAnalysisInput(enrichedText!=null)"
+            }
             val contract = EngineContract(
                 functionId = fid,
                 version = "1.0.0",
-                inputSchema = "CanonicalAnalysisInput(enrichedText!=null)",
+                inputSchema = inputSchema,
                 outputSchema = "DomainSummary(title, original_url, short_description, key_takeaways)",
                 capabilities = EngineCapabilities(
                     name = name,
-                    supportsSearchGrounding = (fid != "MULTIMEDIA_ANALYSIS"),
+                    supportsSearchGrounding = (fid != "MULTIMEDIA_ANALYSIS" && fid != "PHOTO_SCREENSHOT_ANALYSIS"),
                     supportsDirectPdf = false
                 ),
                 promptPath = path,

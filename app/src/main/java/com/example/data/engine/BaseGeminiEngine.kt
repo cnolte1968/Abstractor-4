@@ -11,6 +11,11 @@ import com.example.domain.model.DomainSummary
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
+class NonRetryableGeminiException(
+    override val message: String,
+    val category: String
+) : IllegalStateException(message)
+
 abstract class BaseGeminiEngine(
     protected val gateway: com.example.domain.repository.GeminiGateway,
     protected val promptAssetLoader: PromptAssetLoader
@@ -208,6 +213,14 @@ abstract class BaseGeminiEngine(
         var rawResponsePreview: String = ""
         var rawResponseLength = 0
 
+        var currentRequest = request
+        var emptyCandidateFallbackTriggered = false
+        var fallbackSourceContentLength = 0
+        var attempt1CandidateCount = 0
+        var attempt1PartsCount = 0
+        var attempt1TextPartCount = 0
+        var attempt1FinishReason = ""
+
         while (attempt <= maxAttempts) {
             try {
                 Log.i("RelevantorRuntime", "Content generation attempt $attempt of $maxAttempts for functionId: $functionId")
@@ -221,7 +234,7 @@ abstract class BaseGeminiEngine(
                 GatewayDiagnostics.resolvedHostBeforeRequest = if (GatewayDiagnostics.preflightDns == "PASS") "PASS" else "FAIL"
 
                 PipelineReportStore.startStep("gemini_request", "Gemini Request", "Attempt $attempt, Model: $model")
-                val response = gateway.generateContent(model, request)
+                val response = gateway.generateContent(model, currentRequest)
                 httpStatus = 200
                 PipelineReportStore.endStepPass(
                     "gemini_request",
@@ -230,23 +243,221 @@ abstract class BaseGeminiEngine(
                 )
 
                 PipelineReportStore.startStep("gemini_response", "Gemini Response")
-                val responseText = response.candidates?.firstOrNull()?.content?.parts?.firstOrNull()?.text
-                    ?: throw IllegalStateException("Gemini API returned an empty response")
+                val candidates = response.candidates
+                val candidateCount = candidates.size
+                val promptFeedback = response.promptFeedback
+                val promptBlockReason = promptFeedback?.resolvedBlockReason
+                val promptFeedbackPresent = promptFeedback != null
 
-                rawResponseLength = responseText.length
-                rawResponsePreview = responseText.take(120)
-                Log.i("RUNTIME_SMOKE", "GEMINI_RESPONSE_RECEIVED - Function: $functionId, Response length: $rawResponseLength")
-                Log.d("BaseGeminiEngine", "RAW GEMINI RESPONSE (len=${responseText.length}):\n$responseText")
-                PipelineReportStore.endStepPass(
-                    "gemini_response",
-                    "Gemini response received. Length: $rawResponseLength characters",
-                    decision = "Normalize response"
-                )
-                
-                try {
-                    java.io.File("raw_gemini_response.json").writeText(responseText)
-                } catch (e: Exception) {
-                    println("API_DEBUG: Failed to write raw response to file: ${e.message}")
+                var selectedCandidate: Candidate? = null
+                var extractedResponseText: String? = null
+
+                for (c in candidates) {
+                    val textParts = c.content?.parts?.mapNotNull { it.text }?.filter { it.isNotBlank() } ?: emptyList()
+                    if (textParts.isNotEmpty()) {
+                        selectedCandidate = c
+                        extractedResponseText = textParts.joinToString("\n")
+                        break
+                    }
+                }
+
+                val firstCandidate = candidates.firstOrNull()
+                val finishReason = selectedCandidate?.resolvedFinishReason 
+                    ?: firstCandidate?.resolvedFinishReason 
+                    ?: promptBlockReason 
+                    ?: "NONE"
+
+                val contentPresent = firstCandidate?.content != null
+                val partsPresent = (firstCandidate?.content?.parts?.isNotEmpty() == true)
+                val partsCount = firstCandidate?.content?.parts?.size ?: 0
+                val textPartCount = firstCandidate?.content?.parts?.count { !it.text.isNullOrBlank() } ?: 0
+
+                val isSafetyBlocked = finishReason.equals("SAFETY", ignoreCase = true) 
+                    || !promptBlockReason.isNullOrEmpty() 
+                    || firstCandidate?.safetyRatings?.any { it.blocked == true } == true
+
+                val isRecitationBlocked = finishReason.equals("RECITATION", ignoreCase = true)
+
+                val responseText = extractedResponseText
+
+                if (!responseText.isNullOrBlank()) {
+                    rawResponseLength = responseText.length
+                    rawResponsePreview = responseText.take(120)
+
+                    PipelineReportStore.updateSection("gemini_response") { map ->
+                        map["geminiResponseReceived"] = true
+                        map["responseOutcome"] = "SUCCESS"
+                        map["httpStatus"] = 200
+                        map["candidateCount"] = candidateCount
+                        map["contentPresent"] = contentPresent
+                        map["partsPresent"] = partsPresent
+                        map["partsCount"] = partsCount
+                        map["textPartCount"] = textPartCount
+                        map["finishReason"] = finishReason
+                        map["safetyBlocked"] = isSafetyBlocked
+                        map["promptFeedbackPresent"] = promptFeedbackPresent
+                        map["promptBlockReason"] = promptBlockReason ?: ""
+                        map["retryCount"] = attempt - 1
+                        map["tolerantParseOutcome"] = "TEXT_FOUND"
+                        map["finalMappedError"] = "NONE"
+                        map["safetyBlockDetected"] = isSafetyBlocked
+                        map["rawGeminiResponseLength"] = rawResponseLength
+                        map["rawGeminiFirst1000SafeChars"] = responseText.take(1000)
+                        if (response.usageMetadata != null) {
+                            map["promptTokenCount"] = response.usageMetadata.promptTokenCount ?: 0
+                            map["candidatesTokenCount"] = response.usageMetadata.candidatesTokenCount ?: 0
+                            map["totalTokenCount"] = response.usageMetadata.totalTokenCount ?: 0
+                        }
+                        if (emptyCandidateFallbackTriggered) {
+                            map["emptyCandidateFallbackTriggered"] = true
+                            map["originalSourceContentLength"] = contentText?.length ?: 0
+                            map["fallbackSourceContentLength"] = fallbackSourceContentLength
+                            map["fallbackStrategy"] = "BALANCED_BEGIN_MIDDLE_END"
+                            map["retryReason"] = "EMPTY_CANDIDATE_CONTENT"
+                            map["attempt1CandidateCount"] = attempt1CandidateCount
+                            map["attempt1PartsCount"] = attempt1PartsCount
+                            map["attempt1TextPartCount"] = attempt1TextPartCount
+                            map["attempt1FinishReason"] = attempt1FinishReason
+                            map["attempt2CandidateCount"] = candidateCount
+                            map["attempt2PartsCount"] = partsCount
+                            map["attempt2TextPartCount"] = textPartCount
+                            map["attempt2FinishReason"] = finishReason
+                            map["fallbackOutcome"] = "SUCCESS"
+                        }
+                    }
+
+                    Log.i("RUNTIME_SMOKE", "GEMINI_RESPONSE_RECEIVED - Function: $functionId, Response length: $rawResponseLength")
+                    Log.d("BaseGeminiEngine", "RAW GEMINI RESPONSE (len=${responseText.length}):\n$responseText")
+                    PipelineReportStore.endStepPass(
+                        "gemini_response",
+                        "Gemini response received. Candidates: $candidateCount, Selected text length: $rawResponseLength",
+                        decision = "Normalize response"
+                    )
+
+                    try {
+                        java.io.File("raw_gemini_response.json").writeText(responseText)
+                    } catch (e: Exception) {
+                        println("API_DEBUG: Failed to write raw response to file: ${e.message}")
+                    }
+                } else {
+                    val errorCategory = when {
+                        isSafetyBlocked -> "SAFETY_BLOCK"
+                        isRecitationBlocked -> "RECITATION_BLOCK"
+                        candidates.isEmpty() -> "NO_CANDIDATES"
+                        contentPresent && partsCount == 0 -> "EMPTY_CANDIDATE_CONTENT"
+                        contentPresent && textPartCount == 0 -> "EMPTY_CANDIDATE_CONTENT"
+                        !contentPresent -> "EMPTY_CANDIDATE_CONTENT"
+                        else -> "UNKNOWN_EMPTY_RESPONSE"
+                    }
+
+                    val userErrorMessage = when (errorCategory) {
+                        "SAFETY_BLOCK" -> "Die KI konnte für diesen Inhalt keine Antwort erzeugen. Der Inhalt wurde möglicherweise durch eine Sicherheitsregel blockiert."
+                        "RECITATION_BLOCK" -> "Die KI konnte keine Antwort erzeugen, da der Inhalt urheberrechtlich geschützte Rezitationen enthalten könnte."
+                        "NO_CANDIDATES" -> "Die KI hat keine Ergebnisse geliefert. Bitte versuche es erneut."
+                        else -> "Die KI hat keine auswertbare Antwort geliefert. Bitte versuche es erneut."
+                    }
+
+                    val canTriggerAdaptiveFallback = activeGrounding &&
+                        attempt == 1 &&
+                        errorCategory == "EMPTY_CANDIDATE_CONTENT" &&
+                        !isSafetyBlocked &&
+                        !isRecitationBlocked &&
+                        promptBlockReason.isNullOrEmpty() &&
+                        (finishReason.equals("STOP", ignoreCase = true) || finishReason.equals("NONE", ignoreCase = true) || finishReason.isBlank()) &&
+                        !contentText.isNullOrBlank() &&
+                        contentText.length > 12000
+
+                    if (canTriggerAdaptiveFallback) {
+                        emptyCandidateFallbackTriggered = true
+                        attempt1CandidateCount = candidateCount
+                        attempt1PartsCount = partsCount
+                        attempt1TextPartCount = textPartCount
+                        attempt1FinishReason = finishReason
+
+                        val fallbackText = buildBalancedExcerpt(contentText, 12000)
+                        fallbackSourceContentLength = fallbackText.length
+
+                        val fallbackPromptBuilder = StringBuilder()
+                        fallbackPromptBuilder.append("Analyse für die URL/Datei: $url\n")
+                        if (input.mimeType == "application/pdf" && input.rawBytes != null) {
+                            fallbackPromptBuilder.append("Das Dokument liegt als angehängte PDF-Datei vor. Bitte analysiere den gesamten Inhalt dieser PDF-Datei direkt.\n")
+                        } else {
+                            fallbackPromptBuilder.append("Inhalt der Quelle:\n$fallbackText\n")
+                        }
+                        if (!freeQuery.isNullOrBlank()) {
+                            fallbackPromptBuilder.append("Anwender-Anfrage (Freie Quellenanfrage):\n$freeQuery\n")
+                        }
+                        val fallbackRequestText = fallbackPromptBuilder.toString()
+
+                        val fallbackPartsList = mutableListOf<Part>()
+                        if (input.rawBytes != null && input.mimeType != null) {
+                            val base64Data = android.util.Base64.encodeToString(input.rawBytes, android.util.Base64.NO_WRAP)
+                            fallbackPartsList.add(Part(inlineData = Blob(mimeType = input.mimeType, data = base64Data)))
+                        }
+                        fallbackPartsList.add(Part(text = fallbackRequestText))
+
+                        currentRequest = GenerateContentRequest(
+                            contents = listOf(Content(parts = fallbackPartsList)),
+                            generationConfig = generationConfig,
+                            tools = tools,
+                            systemInstruction = Content(parts = listOf(Part(text = systemInstructionText)))
+                        )
+
+                        Log.i("RelevantorRuntime", "Empty candidate fallback triggered for attempt 2 with reduced text length: ${fallbackText.length}")
+                        PipelineReportStore.updateSection("gemini_response") { map ->
+                            map["emptyCandidateFallbackTriggered"] = true
+                            map["originalSourceContentLength"] = contentText.length
+                            map["fallbackSourceContentLength"] = fallbackSourceContentLength
+                            map["fallbackStrategy"] = "BALANCED_BEGIN_MIDDLE_END"
+                            map["retryReason"] = "EMPTY_CANDIDATE_CONTENT"
+                            map["attempt1CandidateCount"] = attempt1CandidateCount
+                            map["attempt1PartsCount"] = attempt1PartsCount
+                            map["attempt1TextPartCount"] = attempt1TextPartCount
+                            map["attempt1FinishReason"] = attempt1FinishReason
+                        }
+
+                        attempt++
+                        continue
+                    }
+
+                    PipelineReportStore.updateSection("gemini_response") { map ->
+                        map["geminiResponseReceived"] = true
+                        map["responseOutcome"] = "FAIL"
+                        map["httpStatus"] = 200
+                        map["candidateCount"] = candidateCount
+                        map["contentPresent"] = contentPresent
+                        map["partsPresent"] = partsPresent
+                        map["partsCount"] = partsCount
+                        map["textPartCount"] = textPartCount
+                        map["finishReason"] = finishReason
+                        map["safetyBlocked"] = isSafetyBlocked
+                        map["promptFeedbackPresent"] = promptFeedbackPresent
+                        map["promptBlockReason"] = promptBlockReason ?: ""
+                        map["retryCount"] = attempt - 1
+                        map["tolerantParseOutcome"] = errorCategory
+                        map["finalMappedError"] = errorCategory
+                        map["safetyBlockDetected"] = isSafetyBlocked
+                        if (emptyCandidateFallbackTriggered) {
+                            map["emptyCandidateFallbackTriggered"] = true
+                            map["originalSourceContentLength"] = contentText?.length ?: 0
+                            map["fallbackSourceContentLength"] = fallbackSourceContentLength
+                            map["fallbackStrategy"] = "BALANCED_BEGIN_MIDDLE_END"
+                            map["retryReason"] = "EMPTY_CANDIDATE_CONTENT"
+                            map["attempt1CandidateCount"] = attempt1CandidateCount
+                            map["attempt1PartsCount"] = attempt1PartsCount
+                            map["attempt1TextPartCount"] = attempt1TextPartCount
+                            map["attempt1FinishReason"] = attempt1FinishReason
+                            map["attempt2CandidateCount"] = candidateCount
+                            map["attempt2PartsCount"] = partsCount
+                            map["attempt2TextPartCount"] = textPartCount
+                            map["attempt2FinishReason"] = finishReason
+                            map["fallbackOutcome"] = "FAIL"
+                        }
+                    }
+
+                    val ex = NonRetryableGeminiException(userErrorMessage, errorCategory)
+                    PipelineReportStore.endStepFail("gemini_response", ex)
+                    throw ex
                 }
 
                 PipelineReportStore.startStep("response_normalization", "Response Normalization", "Raw Length: $rawResponseLength")
@@ -349,6 +560,16 @@ abstract class BaseGeminiEngine(
                 GatewayDiagnostics.exceptionMessage = errorMsg
                 
                 GatewayDiagnostics.copyFromLastParserReport()
+
+                if (e is NonRetryableGeminiException) {
+                    httpStatus = 200
+                    GatewayDiagnostics.requestFailureStage = e.category
+                    GatewayDiagnostics.failureStage = e.category
+                    Log.e("RUNTIME_SMOKE", "${e.category} - Function: $functionId, Error: ${e.message}")
+                    Log.e("RelevantorRuntime", "Non-retryable error on attempt $attempt: ${e.message}")
+                    lastException = e
+                    break
+                }
                 
                 val hasResolvedAddresses = GatewayDiagnostics.okHttpDnsResolvedAddresses.isNotEmpty() || GatewayDiagnostics.dnsOutcome == "SUCCESS"
                 val isSocketTimeout = e is java.net.SocketTimeoutException || e is java.io.InterruptedIOException || e.localizedMessage?.contains("timeout", ignoreCase = true) == true
@@ -444,5 +665,87 @@ abstract class BaseGeminiEngine(
         }
 
         return lastParsedSummary ?: throw IllegalStateException("Analysis resulted in empty summary without throwing exception.")
+    }
+
+    companion object {
+        fun buildBalancedExcerpt(text: String, targetMaxChars: Int = 12000): String {
+            if (text.length <= targetMaxChars) return text
+
+            val seg1Target = 5000
+            val seg2Target = 3000
+            val seg3Target = 4000
+
+            val textLength = text.length
+
+            val rawEnd1 = seg1Target.coerceAtMost(textLength)
+            val end1 = findBestBoundary(text, rawEnd1, searchRadius = 300, searchBackward = true)
+
+            val midIndex = textLength / 2
+            val rawStart2 = (midIndex - seg2Target / 2).coerceAtLeast(end1 + 50)
+            val start2 = findBestBoundary(text, rawStart2, searchRadius = 300, searchBackward = true)
+
+            val rawEnd2 = (start2 + seg2Target).coerceAtMost(textLength)
+            val end2 = findBestBoundary(text, rawEnd2, searchRadius = 300, searchBackward = true)
+
+            val rawStart3 = (textLength - seg3Target).coerceAtLeast(end2 + 50)
+            val start3 = findBestBoundary(text, rawStart3, searchRadius = 300, searchBackward = true)
+
+            val part1 = text.substring(0, end1).trim()
+            val part2 = if (start2 in end1 until end2) text.substring(start2, end2).trim() else ""
+            val part3 = if (start3 in (end2 + 1) until textLength) text.substring(start3, textLength).trim() else ""
+
+            val sb = StringBuilder()
+            sb.append("[AUSZUG ANFANG]\n").append(part1)
+            if (part2.isNotBlank()) {
+                sb.append("\n\n[AUSZUG MITTE]\n").append(part2)
+            }
+            if (part3.isNotBlank()) {
+                sb.append("\n\n[AUSZUG ENDE]\n").append(part3)
+            }
+
+            val result = sb.toString()
+            return if (result.length > targetMaxChars + 500) {
+                result.take(targetMaxChars)
+            } else {
+                result
+            }
+        }
+
+        private fun findBestBoundary(text: String, pos: Int, searchRadius: Int = 300, searchBackward: Boolean = true): Int {
+            if (pos <= 0) return 0
+            if (pos >= text.length) return text.length
+
+            val range = if (searchBackward) {
+                (pos - searchRadius).coerceAtLeast(0) .. pos
+            } else {
+                pos .. (pos + searchRadius).coerceAtMost(text.length)
+            }
+
+            val newlineIdx = if (searchBackward) {
+                text.lastIndexOf('\n', pos).takeIf { it in range }
+            } else {
+                text.indexOf('\n', pos).takeIf { it in range }
+            }
+            if (newlineIdx != null && newlineIdx != -1) return newlineIdx
+
+            val punctuation = listOf(". ", "? ", "! ")
+            for (p in punctuation) {
+                val idx = if (searchBackward) {
+                    text.lastIndexOf(p, pos).takeIf { it in range }
+                } else {
+                    text.indexOf(p, pos).takeIf { it in range }
+                }
+                if (idx != null && idx != -1) return idx + p.length
+            }
+
+            val spaceIdx = if (searchBackward) {
+                text.lastIndexOf(' ', pos).takeIf { it in range }
+            } else {
+                text.indexOf(' ', pos).takeIf { it in range }
+            }
+            if (spaceIdx != null && spaceIdx != -1) return spaceIdx
+
+            return pos
+        }
     }
 }
