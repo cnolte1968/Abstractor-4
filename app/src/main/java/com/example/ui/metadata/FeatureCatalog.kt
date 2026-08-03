@@ -76,6 +76,7 @@ object FeatureCatalog {
         // Category F (Google Maps)
         FeatureMetadata("GOOGLE_MAPS_ANALYZER", AnalysisType.GOOGLE_MAPS_ANALYZER, "Google Maps Analyser", "Ortsparameter und Places API Details analysieren", "F", 1, Icons.Default.Place, Color(0xFFEA4335), enabled = true, acceptedInputs = setOf(AcceptedInput.WEB)),
         FeatureMetadata("GOOGLE_MAPS_LOCATION_CONTEXT", AnalysisType.GOOGLE_MAPS_LOCATION_CONTEXT, "Kontext zum Ort", "Umfeld-, Orts- und Hintergrundkontext analysieren", "F", 2, Icons.Default.Map, Color(0xFFEA4335), enabled = true, acceptedInputs = setOf(AcceptedInput.WEB)),
+        FeatureMetadata("GOOGLE_MAPS_LOCATION_QUERY", AnalysisType.GOOGLE_MAPS_LOCATION_QUERY, "Frage zum Ort", "Spezifische Fragen zu einer Location beantworten", "F", 3, Icons.Default.QuestionAnswer, Color(0xFFEA4335), enabled = true, acceptedInputs = setOf(AcceptedInput.WEB)),
 
         // Category E
         FeatureMetadata("DOCUMENT_SUMMARY", AnalysisType.DOCUMENT_SUMMARY, "Dokument zusammenfassen", "Dateiinhalt kompakt analysieren", "E", 1, Icons.Default.Article, Color(0xFF0891B2), enabled = true, acceptedInputs = setOf(AcceptedInput.DOCUMENT)),

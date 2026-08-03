@@ -934,25 +934,41 @@ fun SmartphoneLayout(
                                 categoriesList.find { it.id == "C" }
                             ).filterNotNull()
 
-                            androidx.compose.foundation.layout.Box(
-                                modifier = Modifier.fillMaxSize()
+                            LazyColumn(
+                                modifier = Modifier
+                                    .fillMaxSize()
+                                    .padding(16.dp),
+                                verticalArrangement = Arrangement.spacedBy(16.dp)
                             ) {
-                                androidx.compose.foundation.Image(
-                                    painter = androidx.compose.ui.res.painterResource(id = R.drawable.c_relevantor_home_coffeehouse_background),
-                                    contentDescription = null,
-                                    modifier = Modifier.fillMaxSize(),
-                                    contentScale = androidx.compose.ui.layout.ContentScale.Crop,
-                                    alignment = Alignment.TopCenter
-                                )
+                                // Top Hero Section with Coffeehouse Background
+                                item {
+                                    androidx.compose.foundation.layout.Box(
+                                        modifier = Modifier.fillMaxWidth()
+                                    ) {
+                                        // Background Image matching the content height of Header, URL Input and Favorites
+                                        androidx.compose.foundation.Image(
+                                            painter = androidx.compose.ui.res.painterResource(id = R.drawable.relevantor_home_coffeehouse),
+                                            contentDescription = null,
+                                            modifier = Modifier.matchParentSize(),
+                                            contentScale = androidx.compose.ui.layout.ContentScale.Crop,
+                                            alignment = Alignment.TopCenter
+                                        )
 
-                                LazyColumn(
-                                    modifier = Modifier
-                                        .fillMaxSize()
-                                        .padding(16.dp),
-                                    verticalArrangement = Arrangement.spacedBy(16.dp)
-                                ) {
-                                    // Top Hero Section with Coffeehouse Background
-                                    item {
+                                        // Soft Gradient Overlay fading into the solid background color
+                                        androidx.compose.foundation.layout.Box(
+                                            modifier = Modifier
+                                                .matchParentSize()
+                                                .background(
+                                                    androidx.compose.ui.graphics.Brush.verticalGradient(
+                                                        colors = listOf(
+                                                            MaterialTheme.colorScheme.background.copy(alpha = 0.35f),
+                                                            MaterialTheme.colorScheme.background.copy(alpha = 0.75f),
+                                                            MaterialTheme.colorScheme.background
+                                                        )
+                                                    )
+                                                )
+                                        )
+
                                         Column(
                                             modifier = Modifier
                                                 .fillMaxWidth()
@@ -1010,6 +1026,7 @@ fun SmartphoneLayout(
                                             )
                                         }
                                     }
+                                }
 
                                 // Vertikale Kategorien
                                 item {
@@ -1197,10 +1214,9 @@ fun SmartphoneLayout(
                                         }
                                     }
                                 }
-                            }
 
+                            }
                         }
-                    }
                         AppTab.VERLAUF -> {
                             Box(modifier = Modifier.fillMaxSize().padding(16.dp)) {
                                 HistoryTabScreen(savedHistories, viewModel)
@@ -1304,9 +1320,7 @@ fun UrlInputCard(
         value = urlInput,
         onValueChange = onUrlInputChange,
         placeholder = { Text("URL eingeben", fontSize = 14.sp, color = Color.Gray) },
-        modifier = Modifier
-            .fillMaxWidth()
-            .heightIn(min = 50.dp),
+        modifier = Modifier.fillMaxWidth(),
         singleLine = true,
         leadingIcon = { Icon(Icons.Default.Link, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(20.dp)) },
         trailingIcon = {
@@ -1349,7 +1363,7 @@ fun FavoritesPanel(
     onToggleFavorite: (String) -> Unit,
     onEditClick: () -> Unit = {}
 ) {
-    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.SpaceBetween,
@@ -1385,7 +1399,7 @@ fun FavoritesPanel(
                     Card(
                         modifier = Modifier
                             .width(145.dp)
-                            .height(80.dp)
+                            .height(95.dp)
                             .clickable { onFunctionClick(func) },
                         colors = CardDefaults.cardColors(containerColor = Color.White),
                         shape = RoundedCornerShape(12.dp),
