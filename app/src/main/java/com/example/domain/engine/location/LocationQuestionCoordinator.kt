@@ -26,14 +26,14 @@ data class LocationQuestionAggregatedContext(
     val formattedCombinedContext: String = ""
 )
 
-class LocationQuestionCoordinator(
+open class LocationQuestionCoordinator(
     private val placesApiService: PlacesApiService = PlacesApiService,
     private val locationContextService: GoogleMapsLocationContextService = GoogleMapsLocationContextService(),
     private val wikipediaContextSource: ContextSource = WikipediaContextSource(),
     private val wikivoyageContextSource: ContextSource = WikivoyageContextSource(),
     private val planner: LocationQuestionPlanner = LocationQuestionPlanner
 ) {
-    suspend fun coordinate(
+    open suspend fun coordinate(
         rawLocationInput: String,
         userQuestion: String,
         existingPlan: ExecutionPlan? = null,

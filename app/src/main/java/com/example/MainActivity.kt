@@ -39,6 +39,8 @@ import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.font.FontWeight
@@ -320,7 +322,9 @@ fun RelevantorApp(viewModel: MainViewModel) {
                 if (func.type != null) {
                     viewModel.setAnalysisType(func.type)
                 }
-                if (func.type?.canonical() == com.example.data.AnalysisType.FREE_SOURCE_QUERY) {
+                if (func.type?.canonical() == com.example.data.AnalysisType.FREE_SOURCE_QUERY ||
+                    func.type?.canonical() == com.example.data.AnalysisType.GOOGLE_MAPS_LOCATION_QUERY
+                ) {
                     showFreeQueryDialog = true
                 } else {
                     viewModel.fetchSummary(
@@ -373,13 +377,18 @@ fun RelevantorApp(viewModel: MainViewModel) {
     }
 
     if (showFreeQueryDialog) {
+        val isLocationQuery = activeFunction?.type?.canonical() == com.example.data.AnalysisType.GOOGLE_MAPS_LOCATION_QUERY
+        val dialogTitle = if (isLocationQuery) "Frage zum Ort" else "Frage an die Quelle"
+        val dialogPlaceholder = if (isLocationQuery) "Trage hier Deine spezifische Frage zu dieser Location ein." else "Trage hier Deine Frage zur Quelle ein"
+        val targetAnalysisType = activeFunction?.type ?: com.example.data.AnalysisType.FREE_SOURCE_QUERY
+
         AlertDialog(
             onDismissRequest = {
                 showFreeQueryDialog = false
                 tempFreeQueryInput = ""
             },
             title = {
-                Text("Frage an die Quelle")
+                Text(dialogTitle)
             },
             text = {
                 Column {
@@ -387,7 +396,7 @@ fun RelevantorApp(viewModel: MainViewModel) {
                         value = tempFreeQueryInput,
                         onValueChange = { tempFreeQueryInput = it },
                         placeholder = {
-                            Text("Trage hier Deine Frage zur Quelle ein", color = Color.Gray)
+                            Text(dialogPlaceholder, color = Color.Gray)
                         },
                         modifier = Modifier
                             .fillMaxWidth()
@@ -406,7 +415,7 @@ fun RelevantorApp(viewModel: MainViewModel) {
                         viewModel.fetchSummary(
                             rawUrl = urlInput,
                             directContent = null,
-                            analysisType = com.example.data.AnalysisType.FREE_SOURCE_QUERY,
+                            analysisType = targetAnalysisType,
                             freeQuery = trimmed
                         )
                     },
@@ -935,13 +944,23 @@ fun SmartphoneLayout(
                             ).filterNotNull()
 
                             androidx.compose.foundation.layout.Box(
-                                modifier = Modifier.fillMaxSize()
+                                modifier = Modifier
+                                    .fillMaxSize()
+                                    .background(
+                                        brush = androidx.compose.ui.graphics.Brush.verticalGradient(
+                                            colors = listOf(
+                                                androidx.compose.ui.graphics.Color(0xFFFEF0DF),
+                                                androidx.compose.ui.graphics.Color(0xFFFFF8F0),
+                                                androidx.compose.ui.graphics.Color(0xFFFFFFFF)
+                                            )
+                                        )
+                                    )
                             ) {
-                                androidx.compose.foundation.Image(
-                                    painter = androidx.compose.ui.res.painterResource(id = R.drawable.c_relevantor_home_coffeehouse_background),
+                                Image(
+                                    painter = painterResource(id = R.drawable.relevantor_home_coffeehouse_background_v2),
                                     contentDescription = null,
                                     modifier = Modifier.fillMaxSize(),
-                                    contentScale = androidx.compose.ui.layout.ContentScale.Crop,
+                                    contentScale = ContentScale.Crop,
                                     alignment = Alignment.TopCenter
                                 )
 

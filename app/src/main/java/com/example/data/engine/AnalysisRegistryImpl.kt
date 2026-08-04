@@ -3,6 +3,7 @@ package com.example.data.engine
 import android.content.Context
 import com.example.data.AnalysisType
 import com.example.data.engine.document.DocumentAnalysisEngine
+import com.example.data.engine.location.LocationQuestionEngine
 import com.example.data.engine.top3.Top3KeyPointsEngine
 import com.example.data.engine.web.WebpageAnalysisEngine
 import com.example.domain.engine.*
@@ -22,7 +23,10 @@ class AnalysisRegistryImpl(
         // 1. Document Engine (Dokumente)
         registerEngine(DocumentAnalysisEngine(gateway, promptAssetLoader))
 
-        // 2. Top3 Engine (Kernaussagen)
+        // 2. Google Maps Location Query Engine
+        registerEngine(LocationQuestionEngine(gateway, promptAssetLoader))
+
+        // 3. Top3 Engine (Kernaussagen)
         val a2Contract = EngineContract(
             functionId = "KEY_TAKEAWAYS",
             version = "1.0.0",

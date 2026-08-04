@@ -19,3 +19,19 @@ build/
 local.properties
 .env
 debug.keystore
+
+# Recovery and temporary Git data
+.git_corrupt_archive_*/
+github_fresh_tmp_*/
+recovery_backup_*/
+debug_archive/
+
+# Sensitive signing material
+debug.keystore.base64
+*.jks
+*.keystore
+
+# Generated artifacts and logs
+*.apk
+*.aab
+test_output.log
