@@ -30,7 +30,9 @@ This file contains persistent constraints and instructions that the AI Studio Ag
 - **Prohibited Container Paths**: Internal container paths such as `/app/applet` or concatenated artifacts like `/app/applet/app/applet` must NEVER be used in file tools, task descriptions, or prompt instructions.
 
 ## 5. Git Health Gate & Operation Rules
-- **Mandatory Pre-Check**: At the start of every new session and prior to any critical write or Git action, run `git fsck --full` and `git status --short`. If corruption or repository error is detected, STOP immediately without modifying any files.
+- **Post-Push Health Gate (MANDATORY)**: The `.git` repository metadata is maintained outside the visible workspace (at `/app/relevantor_git_metadata`) while `.git` in the root is merely a text reference to it. A normal `.git` directory MUST NOT be created in the workspace. After every manual commit/push via the GAIS GitHub UI, the health gate script (`tools/git_post_ui_push_health_gate.sh`) MUST be executed to synchronize the local HEAD with the pushed remote. Work may only proceed if the status is `POST-PUSH-GIT-HEALTH PASS`.
+- **Handling UI Errors**: The banner `1 error running the code` does not automatically imply a project error. If it appears, verify exit codes, build status, `git fsck`, and unexpected diffs. NEVER automatically click `Fix`. Only halt on concrete technical errors (exit code != 0, build fails, FSCK errors, unexpected file modifications, hash mismatches).
+- **Mandatory Pre-Check**: At the start of every new session and prior to any critical write or Git action, verify the workspace integrity via the health gate or by manually running `git status --short` and `git fsck --full --strict`.
 - **No Automated Git Operations**: GAIS is strictly prohibited from running `git add`, `git commit`, `git push`, `git pull`, or automated Git closures. Staging, committing, and pushing occur exclusively via the user in the AI Studio GitHub UI.
 
 ## 6. Strict File Allowlist & Protected Assets

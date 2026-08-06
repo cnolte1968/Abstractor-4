@@ -152,7 +152,10 @@ Git-Health-Gate:
 - Vor jeder schreibenden Aufgabe und bei Beginn jeder neuen GAIS-Session muss eine Git-Health-Prüfung durchgeführt werden:
   `git fsck --full`
   `git status --short`
-- Falls ein Git-Fehler oder eine Korruption erkannt wird: Sofort STOP, keine Dateien verändern.
+- Das .git-Verzeichnis liegt strikt außerhalb des Workspaces (unter `/app/relevantor_git_metadata`). Die Datei `.git` im Projekt-Root ist lediglich eine Textreferenz. Ein normales `.git`-Verzeichnis darf nicht im Workspace erzeugt werden.
+- Nach jedem manuellen Push in der GAIS GitHub-Oberfläche ist zwingend das Skript `tools/git_post_ui_push_health_gate.sh` auszuführen, um lokale Git-Metadaten sauber zu synchronisieren. Die Arbeit darf nur bei Status `POST-PUSH-GIT-HEALTH PASS` fortgesetzt werden.
+- Der UI-Banner `1 error running the code` ist kein Beweis für einen Projektfehler. Bei Auftreten: Exit-Codes, Build, `git fsck` und File-Diffs prüfen. NIEMALS blind auf `Fix` klicken.
+- Falls ein echter Git-Fehler oder eine Korruption erkannt wird: Sofort STOP, keine Dateien verändern.
 
 Strikte Bedienungsgrenzen:
 - Kein `git add`, `git add .`, `git commit`, `git push`, `git pull` oder automatischer Git-Abschluss durch GAIS.
