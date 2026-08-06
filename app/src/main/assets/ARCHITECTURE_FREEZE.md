@@ -152,3 +152,20 @@ These existing compiler warnings and non-blocking elements are documented as tec
 
 ### Final Conclusion:
 > **ARCHITECTURE FREEZE ACCEPTED:** Yes, the Global Analytical Engine (GAA) plugin system is fully hardened, completely decoupled, and officially frozen.
+
+---
+
+## 8. GAIS Workspace & Repository Governance Integration
+
+All architectural modifications, engine plugin additions, and prompt updates are subject to the following mandatory workspace governance rules:
+
+1. **Canonical Root & Path Mapping**:
+   * The visible workspace root is strictly `/`. All relative paths in contracts, tasks, and documentation must resolve from `/`.
+   * Internal container paths (e.g., `/app/applet` or concatenated variants) are strictly forbidden in file operations and tooling.
+2. **Git Health Gate**:
+   * Prior to any architectural modification or prompt change, `git fsck --full` and `git status --short` must be executed.
+   * If any repository corruption is detected, all file operations must STOP immediately.
+3. **Allowlist Enforcement & Asset Protection**:
+   * Code, prompt, or configuration changes must operate strictly within an authorized file allowlist for the given task.
+   * Prompts (`app/src/main/assets/prompts/`), icon assets, drawables, manifests, build scripts, and database schema files are strictly protected.
+   * Binary assets must never be modified or re-encoded without explicit authorization and SHA-256 verification.
