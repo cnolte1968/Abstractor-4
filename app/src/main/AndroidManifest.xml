@@ -37,6 +37,9 @@
                 <data android:mimeType="text/plain" />
             </intent-filter>
             
+            <meta-data
+                android:name="android.app.shortcuts"
+                android:resource="@xml/shortcuts" />
         </activity>
 
         <!-- Accessibility Service for Two-Stage Local Content Extraction -->

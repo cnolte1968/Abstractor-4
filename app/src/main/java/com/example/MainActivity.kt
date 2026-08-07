@@ -61,6 +61,13 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
         viewModel.initIfNeeded(applicationContext)
+        val publishResult = com.example.share.DirectShareManager.updateShortcuts(applicationContext)
+        android.util.Log.i("MainActivity", "DirectShare updateShortcuts result: $publishResult")
+        if (publishResult.gateEnabled && publishResult.action == "published") {
+            Toast.makeText(this, "Direct Share: ${publishResult.publishedCount} Shortcuts published", Toast.LENGTH_SHORT).show()
+        } else if (publishResult.gateEnabled && publishResult.action == "failed") {
+            Toast.makeText(this, "Direct Share: publish failed", Toast.LENGTH_SHORT).show()
+        }
 
         // Handle initial incoming share intent
         intent?.let { handleIntent(it) }
@@ -86,9 +93,17 @@ class MainActivity : ComponentActivity() {
     private fun handleIntent(intent: Intent) {
         if (intent.action == Intent.ACTION_SEND && intent.type == "text/plain") {
             val sharedText = intent.getStringExtra(Intent.EXTRA_TEXT)
+            val shortcutId = intent.getStringExtra(androidx.core.content.pm.ShortcutManagerCompat.EXTRA_SHORTCUT_ID)
+
             if (!sharedText.isNullOrBlank()) {
-                viewModel.processSharedText(sharedText, intent)
-                Toast.makeText(this, "Inhalt empfangen!", Toast.LENGTH_SHORT).show()
+                val analysisType = com.example.share.DirectShareManager.getAnalysisTypeForShortcutId(shortcutId)
+                if (analysisType != null) {
+                    intent.removeExtra(androidx.core.content.pm.ShortcutManagerCompat.EXTRA_SHORTCUT_ID)
+                    viewModel.processDirectShare(sharedText, analysisType, intent)
+                } else {
+                    viewModel.processSharedText(sharedText, intent)
+                    Toast.makeText(this, "Inhalt empfangen!", Toast.LENGTH_SHORT).show()
+                }
             }
         }
     }

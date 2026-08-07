@@ -424,6 +424,59 @@ class MainViewModel : ViewModel() {
         setSharedText(sharedText, intent)
     }
 
+    fun processDirectShare(sharedText: String, analysisType: com.example.data.AnalysisType, intent: Intent? = null) {
+        val extractedUrl = com.example.data.YoutubeUrlDecoder.extractUrl(sharedText)
+        val isMaps = analysisType == com.example.data.AnalysisType.GOOGLE_MAPS_ANALYZER ||
+                     analysisType == com.example.data.AnalysisType.GOOGLE_MAPS_LOCATION_CONTEXT
+
+        val urlToCheck = extractedUrl ?: sharedText
+
+        val isValid = if (isMaps) {
+            extractedUrl != null && com.example.data.GoogleMapsUrlParser.isGoogleMapsUrl(urlToCheck.trim())
+        } else {
+            extractedUrl != null || sharedText.trim().length > 20
+        }
+
+        if (!isValid) {
+            // Fallback to normal share if invalid for the selected function
+            processSharedText(sharedText, intent)
+            return
+        }
+
+        val rawUrl = extractedUrl?.trim() ?: "https://local.shared.content"
+        val directContent = if (extractedUrl == null) sharedText.trim() else null
+
+        // Populate shared URL to fill so input bar displays the shared link/text
+        _sharedUrlToFill.value = rawUrl
+
+        if (directContent != null) {
+            cachedDirectContent = directContent
+        } else if (extractedUrl != null) {
+            val cleanUrl = extractedUrl.trim()
+            val restText = sharedText.replace(cleanUrl, "").replace("https://$cleanUrl", "").replace("http://$cleanUrl", "").trim()
+            if (com.example.LocalContentExtractionEngine.isSocialMediaOrWalledUrl(cleanUrl)) {
+                val stage1Payload = intent?.let { com.example.LocalContentExtractionEngine.extractIntentTextPayload(it, cleanUrl) }
+                val stage2Payload = com.example.LocalContentExtractionEngine.getScrapedScreenTextAndReset()
+                if (stage1Payload != null && stage1Payload.isNotBlank()) {
+                    cachedDirectContent = stage1Payload
+                } else if (stage2Payload != null && stage2Payload.isNotBlank()) {
+                    cachedDirectContent = stage2Payload
+                }
+            } else if (restText.length > 50 && !com.example.data.YoutubeUrlDecoder.isYoutubeUrl(cleanUrl)) {
+                cachedDirectContent = sharedText
+            }
+        }
+
+        // Doppelstartschutz: Not start if already loading identical content
+        if (_uiState.value is UiState.Loading && _currentAnalysisType.value == analysisType && _currentUrl.value == rawUrl) {
+            return
+        }
+
+        // Remove intent extra is handled in MainActivity.
+        // Direct start without confirmation dialog
+        fetchSummary(rawUrl = rawUrl, directContent = cachedDirectContent, analysisType = analysisType)
+    }
+
     fun fetchSummary(rawUrl: String, directContent: String? = null, analysisType: com.example.data.AnalysisType = com.example.data.AnalysisType.WEB_SUMMARY, freeQuery: String? = null) {
         if (analysisType == com.example.data.AnalysisType.GOOGLE_MAPS_ANALYZER) {
             val analysisId = java.util.UUID.randomUUID().toString() + "|" + analysisType.name
