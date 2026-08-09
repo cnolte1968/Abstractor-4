@@ -137,6 +137,48 @@ object RuntimePreflight {
         }
         checks.add(httpsResult)
 
+        // 4. Check Supabase Database (system_status)
+        val supabaseUrl = com.example.BuildConfig.SUPABASE_URL
+        if (supabaseUrl.isNotBlank() && !supabaseUrl.contains("placeholder")) {
+            try {
+                val supabaseCheckResult = kotlinx.coroutines.runBlocking {
+                    kotlinx.coroutines.withTimeoutOrNull(3500) {
+                        com.example.data.remote.SupabaseSystemStatusChecker().checkStatus()
+                    }
+                }
+                if (supabaseCheckResult != null) {
+                    val statusStr = if (supabaseCheckResult.isPass) "PASS" else "FAIL"
+                    checks.add(
+                        PreflightCheckResult(
+                            name = "Supabase-Database (system_status)",
+                            status = statusStr,
+                            detail = supabaseCheckResult.message
+                        )
+                    )
+                    Log.i(TAG, "Supabase DB Check: $statusStr - ${supabaseCheckResult.message}")
+                } else {
+                    checks.add(
+                        PreflightCheckResult(
+                            name = "Supabase-Database (system_status)",
+                            status = "FAIL",
+                            detail = "Timeout executing status check"
+                        )
+                    )
+                }
+            } catch (e: Exception) {
+                checks.add(
+                    PreflightCheckResult(
+                        name = "Supabase-Database (system_status)",
+                        status = "FAIL",
+                        detail = "Exception during status check: ${e.message}",
+                        exceptionClass = e.javaClass.name,
+                        exceptionMessage = e.message
+                    )
+                )
+                Log.e(TAG, "Supabase DB Check error: ${e.message}", e)
+            }
+        }
+
         val anyFail = checks.any { it.status == "FAIL" }
         if (anyFail) {
             Log.e(TAG, "RUNTIME_SMOKE_FAIL - Preflight checks contained failures")

@@ -1,6 +1,9 @@
 # Project Context: Relevantor
 
-*Letztes Update: 01.07.2026, 01:01:32*
+**Stand:** 2026-08-09 17:20:40 ICT  
+**Status:** **100% KOMPILIERT, PROJEKTPFADE BEREINIGT & BACKEND FOUNDATION (MVP 1C) VERIFIZIERT**  
+
+---
 
 ## 1. Projektziel & Zielgruppe
 
@@ -40,41 +43,50 @@ Das System bietet über sein modulares Cockpit genau elf eigenständige Analysem
 
 ---
 
-## 4. UI/UX & Interaktions-Design
+## 4. Aktueller Entwicklungsstand & Abgeschlossene Meilensteine
 
-Die App verwendet ein fokussiertes, barrierefreies Ein-Screen-Cockpit, das auf Material Design 3 (M3) aufbaut:
-* **Dynamische Farbanpassung:** Nutzung des M3-Farbsystems für ein konsistentes, blendfreies Gesamtbild.
-* **Scanbarkeit:** Ergebnisse zeichnen sich durch strukturierte Stichpunkte aus, die das schnelle Überfliegen erleichtern.
-* **Direkt-Aktionen:** Integrierte Schnellaktionen zum Kopieren, Teilen (Share-Intent) und Neuladen der Analysen sowie ein flexibler Dateipicker für lokale Dokumente.
+1. **Clean Architecture & Android App Core:**
+   - Single-Activity (`MainActivity`) mit Jetpack Compose Material 3 UI.
+   - Entkoppelte Layer (UI, Domain, Data, Engine, Assets).
+   - 11 Analysefunktionen voll funktionsfähig und über Asset-Prompts gesteuert.
+2. **Supabase Backend Foundation (MVP 1C):**
+   - Direct REST API Anbindung via `SupabaseApiService` & Retrofit 2.
+   - Status-Preflight Checker (`SupabaseSystemStatusChecker`, `RuntimePreflight`).
+   - Supabase Migration `20260807000000_mvp1_system_status.sql` für `system_status` Singleton Tabelle.
+   - Version-Mapping von Int4 und SemVer-Strings (`"1.0"` -> `1`) verifiziert in `SupabaseSystemStatusTest`.
+3. **Workspace Path & Governance Clean-Up:**
+   - Vollständige Eliminierung des temporären Verschachtelungs-Artefakts `app/applet/docs_md/`.
+   - Festlegung der `RELEVANTOR_GAIS_WORKSPACE_RULES.md` (Kanonischer Root `/`, Pfadangabe ab `/docs_md/`).
+   - Dateisystem 100% sauber und frei von Code- oder Dokumentations-Dubletten.
 
 ---
 
-## 5. Stand der Prompt-Externalisierung
+## 5. Verzeichnisstruktur der Hauptkomponenten
 
-Die Prompt-Architektur von Relevantor wurde in ein hochgradig modulares und anpassbares asset-basiertes System überführt:
-* **Produktions-Manifest:** Die Datei `app/src/main/assets/prompts/prompt_manifest.json` dient als zentraler Router und ordnet jedem `AnalysisType` seine jeweilige Prompt-Datei zu.
-* **Externalisierte Prompts:** Alle Systemanweisungen und Qualitätsprofile sind als eigenständige Markdown-Dateien (`F_*.md`) organisiert.
-* **Globale Qualitätsschranke:** In `_global_quality_rules.md` sind übergeordnete Qualitätsmaßstäbe (z. B. Umfangsadaption, Verbot von verschachtelten Bulletpoints) hinterlegt, die systemweit geladen und injiziert werden. Die vor kurzem aktualisierten Prompts (`F_STANDARD_WEBSEITE.md`, `F_TOP_3_KERNAUSSAGEN.md` und `F_MULTIMEDIA.md`) folgen einer reinen und minimalistischen Clean-Architecture-Struktur, die ausschließlich die Inhaltsgewinnung und -analyse steuert und gestalterische Präsentationsaspekte komplett der Client-UI überlässt.
-* **Laufzeit-Aktivierung:** Der `PromptLoader` liest die Konfiguration vollständig dynamisch aus den Assets. Hardcodete Fallbacks im Kotlin-Code dienen nur noch als robustes Sicherheitsnetz für den unwahrscheinlichen Fall von Asset-Lesehlern.
+```text
+/
+├── app/                                  # Android Anwendungs-Modul
+│   ├── src/main/java/com/example/        # Kotlin Quellcode (UI, Domain, Data, Engine)
+│   ├── src/main/assets/prompts/          # Asset-Prompts & Manifeste
+│   └── src/test/java/com/example/        # Robolectric & JUnit Tests
+├── supabase/                             # Supabase Backend Configuration & Migrationen
+│   ├── config.toml                       # Supabase CLI Konfiguration
+│   └── migrations/                       # SQL Migrationen (system_status)
+├── tools/                                # Automation & Health Gate Skripte
+│   ├── git_post_ui_push_health_gate.sh   # Post-Push Health Check
+│   └── build_structure_doc.py            # Verzeichnisstruktur-Generator
+├── docs_md/                              # Projektdokumentation & Berichte
+├── AGENTS.md                             # Bindende System Governance
+└── ARCHITECTURE_FREEZE.md                # Architektur Gefriervereinbarung
+```
 
 ---
 
-## 6. Verzeichnisstruktur der produktiven Assets
+## 6. Offene Aufgaben & Nächste Schritte
 
-Sämtliche produktiven Steuerungs- und Sprachkompetenzen liegen sauber getrennt im Asset-Ordner:
-
-```
-app/src/main/assets/prompts/
-├── prompt_manifest.json                       # Produktive Root-Zuweisungstabelle
-├── _global_quality_rules.md                   # Systemweite Qualitätsmaßstäbe und Formatverbote
-├── F_STANDARD_WEBSEITE.md                     # Prompt für Standard Webseiten (v2.0 CLEAN)
-├── F_MULTIMEDIA.md                            # Prompt für Video- und Podcast-Transkripte (v2.0 CLEAN)
-├── F_DOKUMENTE.md                             # Prompt für PDF- und Textdateien
-├── F_TOP_3_KERNAUSSAGEN.md                    # Prompt für die 3-Kernpunkte-Verdichtung (v3.0 CLEAN ARCHITECTURE)
-├── F_AKTUALITAETS_CHECK.md                    # Prompt für Aktualitäts- und Relevanzanalysen
-├── F_FEHLINFORMATIONS_RADAR.md                # Prompt für Faktentreue und Rhetorikprüfung
-├── F_RISIKO_ANALYSE.md                        # Prompt für systematische Risikoaufdeckungen
-├── F_BUSINESS_INKUBATOR.md                    # Prompt für das Ableiten von Innovations-Modellen
-├── F_FACTS_VS_OPINIONS_ANALYZER.md            # Prompt für die neutrale Klassifizierungs-Engine
-└── F_PERSPECTIVES_AND_COUNTERPOSITIONS.md     # Prompt für das Hinzufügen von Gegenpositionen
-```
+1. **GitHub Checkpoint (Anforderer-Aktion):**
+   - Ausführen des manuellen Pushs in der GAIS GitHub UI (`CP-08 MVP1 Backend Foundation + App-Supabase DB Proof`).
+2. **Nächster Entwicklungsmeilenstein (MVP 1D):**
+   - Edge-Function Health Proof (`health-check` Edge Function in Supabase deployment).
+3. **Langfristige Roadmap:**
+   - Supabase Auth Integration & sichere Session-Synchronisation.
