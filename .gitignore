@@ -35,3 +35,6 @@ debug.keystore.base64
 *.apk
 *.aab
 test_output.log
+
+# Supabase CLI cache and temp metadata
+supabase/.temp/
