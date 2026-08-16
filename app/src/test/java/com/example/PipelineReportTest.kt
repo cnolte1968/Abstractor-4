@@ -437,4 +437,103 @@ class PipelineReportTest {
         assertEquals("Load prompt for selected engine", engineRoutingDecision)
         assertEquals("prompt_loading", engineRoutingNextStep)
     }
+
+    @Test
+    fun testStatusModel_NormalSuccess() {
+        val report = PipelineReportStore.startNewReport(sourceTrigger = "MANUAL_URL", runIteration = 1)
+        val context = androidx.test.core.app.ApplicationProvider.getApplicationContext<android.content.Context>()
+        
+        // Mark steps as passed
+        for (step in report.steps) {
+            step.status = "PASS"
+        }
+        
+        GatewayDiagnostics.reset()
+        PipelineReportStore.populateFromDiagnostics(context)
+
+        assertEquals("PASS", report.final_result["technicalStatus"])
+        assertEquals("PASS", report.final_result["functionalStatus"])
+        assertEquals("UNKNOWN", report.final_result["stabilityStatus"])
+        assertEquals(1, report.final_result["runIteration"])
+
+        val jsonStr = PipelineReportStore.getLastReportJson()
+        val json = JSONObject(jsonStr)
+        val errorsObj = json.getJSONObject("errors")
+        assertEquals("PASS", errorsObj.getString("technical_status"))
+        assertEquals("PASS", errorsObj.getString("functional_status"))
+        assertEquals("UNKNOWN", errorsObj.getString("stability_status"))
+        assertEquals(1, errorsObj.getInt("run_iteration"))
+    }
+
+    @Test
+    fun testStatusModel_InsufficientContent() {
+        val report = PipelineReportStore.startNewReport(sourceTrigger = "MANUAL_URL", runIteration = 2)
+        val context = androidx.test.core.app.ApplicationProvider.getApplicationContext<android.content.Context>()
+        
+        GatewayDiagnostics.reset()
+        GatewayDiagnostics.exceptionMessage = "INSUFFICIENT_CONTENT: No extractable text"
+        
+        val fetchStep = report.steps.find { it.stepId == "source_http_fetch" }!!
+        fetchStep.status = "FAIL"
+        fetchStep.exceptionMessage = "INSUFFICIENT_CONTENT"
+        
+        PipelineReportStore.populateFromDiagnostics(context)
+
+        assertEquals("PASS", report.final_result["technicalStatus"])
+        assertEquals("INSUFFICIENT_CONTENT", report.final_result["functionalStatus"])
+        assertEquals("UNKNOWN", report.final_result["stabilityStatus"])
+        assertEquals(2, report.final_result["runIteration"])
+
+        val jsonStr = PipelineReportStore.getLastReportJson()
+        val json = JSONObject(jsonStr)
+        val errorsObj = json.getJSONObject("errors")
+        assertEquals("PASS", errorsObj.getString("technical_status"))
+        assertEquals("INSUFFICIENT_CONTENT", errorsObj.getString("functional_status"))
+        assertEquals("UNKNOWN", errorsObj.getString("stability_status"))
+    }
+
+    @Test
+    fun testStatusModel_GeminiSuccessParserFailure() {
+        val report = PipelineReportStore.startNewReport(sourceTrigger = "MANUAL_URL")
+        val context = androidx.test.core.app.ApplicationProvider.getApplicationContext<android.content.Context>()
+        
+        GatewayDiagnostics.reset()
+        GatewayDiagnostics.rawGeminiResponseLength = 1200
+        GatewayDiagnostics.parserFailureReason = "STRUCTURED_EXTRACTION_FAILED: Missing key takeaways"
+        
+        val geminiRespStep = report.steps.find { it.stepId == "gemini_response" }!!
+        geminiRespStep.status = "PASS"
+        
+        val parseStep = report.steps.find { it.stepId == "parsing" }!!
+        parseStep.status = "FAIL"
+        parseStep.exceptionMessage = "ParserFailure: JSON malformed"
+        
+        PipelineReportStore.populateFromDiagnostics(context)
+
+        assertEquals("PASS", report.final_result["technicalStatus"])
+        assertEquals("FAIL", report.final_result["functionalStatus"])
+        assertEquals("UNKNOWN", report.final_result["stabilityStatus"])
+        assertEquals("STRUCTURED_EXTRACTION_FAILED: Missing key takeaways", report.final_result["parserStrictRejectionReason"])
+        assertTrue(report.final_result["semanticOutcomeReason"].toString().contains("Gemini API call succeeded technically"))
+
+        val jsonStr = PipelineReportStore.getLastReportJson()
+        val json = JSONObject(jsonStr)
+        val errorsObj = json.getJSONObject("errors")
+        assertEquals("PASS", errorsObj.getString("technical_status"))
+        assertEquals("FAIL", errorsObj.getString("functional_status"))
+        assertEquals("UNKNOWN", errorsObj.getString("stability_status"))
+        assertEquals("STRUCTURED_EXTRACTION_FAILED: Missing key takeaways", errorsObj.getString("parser_strict_rejection_reason"))
+    }
+
+    @Test
+    fun testStatusModel_DiagnosticFieldsDefaultAndInitialState() {
+        val report = PipelineReportStore.startNewReport(sourceTrigger = "MANUAL_URL", isSmokeTest = true, testId = "SMOKE_01", runIteration = 3)
+        assertEquals(3, report.metadata["runIteration"])
+        assertEquals(3, report.final_result["runIteration"])
+        assertEquals("UNKNOWN", report.final_result["stabilityStatus"])
+        assertEquals("", report.final_result["payloadInputHash"])
+        assertEquals(0, report.final_result["externalCandidateCount"])
+        assertEquals("", report.final_result["parserStrictRejectionReason"])
+        assertEquals("", report.final_result["semanticOutcomeReason"])
+    }
 }

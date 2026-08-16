@@ -5,5 +5,6 @@ data class ExtractedContent(
     val rawText: String,
     val enrichedText: String,
     val metadata: Map<String, String> = emptyMap(),
-    val useSearchGrounding: Boolean = false
+    val useSearchGrounding: Boolean = false,
+    val confirmedProfile: SourceProfile? = null
 )

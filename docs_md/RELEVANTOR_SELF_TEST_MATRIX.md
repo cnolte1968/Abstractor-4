@@ -31,14 +31,14 @@ Diese Testmatrix dokumentiert den automatisierten Teststatus aller im `FeatureCa
 | **D.1** Social-Media-Generator | Inhalte verarbeiten (D) | *Keiner (Placeholder)* | *Keiner* | Nein | Nein | Nein | Nein | Nein | Nein | Nein | **ROT** (Inaktiv) |
 | **D.2** Kommunikations-Generator | Inhalte verarbeiten (D) | *Keiner (Placeholder)* | *Keiner* | Nein | Nein | Nein | Nein | Nein | Nein | Nein | **ROT** (Inaktiv) |
 | **D.3** Zusammenfassung aus mehreren URL | Inhalte verarbeiten (D) | *Keiner (Placeholder)* | *Keiner* | Nein | Nein | Nein | Nein | Nein | Nein | Nein | **ROT** (Inaktiv) |
-| **E.2** Foto & Screenshots auswerten | Arbeiten mit Dateien (E) | *Keiner (Placeholder)* | *Keiner* | Nein | Nein | Nein | Nein | Nein | Nein | Nein | **ROT** (Inaktiv) |
+| **E.2** Foto & Screenshots auswerten | Arbeiten mit Dateien (E) | `PHOTO_SCREENSHOT_ANALYSIS` | `F_PHOTO_SCREENSHOT_ANALYSIS.md` | Ja | Ja | Ja | Ja | Ja | Ja | Ja | **GRÜN** |
 | **E.3** Bild mit KI erzeugt? | Arbeiten mit Dateien (E) | *Keiner (Placeholder)* | *Keiner* | Nein | Nein | Nein | Nein | Nein | Nein | Nein | **ROT** (Inaktiv) |
 
 ---
 
 ## Dokumentierte Lücken (Gaps)
 
-Alle aktiven Analyse-Funktionen (**A.1, A.2, A.3, A.4, B.1, B.2, B.3, B.4, B.5, B.6, E.1**) wurden vollständig gehärtet:
+Alle aktiven Analyse-Funktionen (**A.1, A.2, A.3, A.4, B.1, B.2, B.3, B.4, B.5, B.6, E.1, E.2**) wurden vollständig gehärtet:
 1. **Golden-Path-Assets**: Alle erforderlichen Testdaten unter `app/src/test/assets/golden/<Fid>/` (z.B. `input.html`, `gemini_response.json`, `expected_domain_summary.json` etc.) sind vorhanden.
 2. **Pipelines**: Vollständig integrierte Akzeptanz- und Contract-Tests im Harness `RelevantorSelfTestHarnessTest.kt` laufen erfolgreich durch.
 

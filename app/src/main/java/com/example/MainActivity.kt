@@ -1,5 +1,6 @@
 package com.example
 
+// CP-00: Trigger Preview Recovery
 // CP-02 Verification: "Frage an die Quelle" user flow verified and active in MainActivity.kt
 import android.content.Intent
 import android.os.Bundle
@@ -34,6 +35,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalConfiguration
@@ -277,6 +279,7 @@ fun RelevantorApp(viewModel: MainViewModel) {
     val savedHistories by viewModel.savedHistories.collectAsState()
     val sharedUrlToFill by viewModel.sharedUrlToFill.collectAsState()
     val authStatus by viewModel.authStatus.collectAsState()
+    val featureEligibilityMap by viewModel.featureEligibilityMap.collectAsState()
 
     var urlInput by rememberSaveable { mutableStateOf("") }
     var useSearchGrounding by rememberSaveable { mutableStateOf(false) }
@@ -297,6 +300,7 @@ fun RelevantorApp(viewModel: MainViewModel) {
     LaunchedEffect(sharedUrlToFill) {
         if (sharedUrlToFill.isNotBlank()) {
             urlInput = sharedUrlToFill
+            viewModel.updateRawInput(sharedUrlToFill)
             selectedTab = AppTab.START
             viewModel.clearSharedUrlToFill()
         }
@@ -318,7 +322,16 @@ fun RelevantorApp(viewModel: MainViewModel) {
         if (func.isPlaceholder) {
             placeholderToShowAlert = func
         } else {
-            if (func.acceptedInputs.contains(com.example.ui.metadata.AcceptedInput.DOCUMENT)) {
+            val eligibility = featureEligibilityMap[func.id]
+            val isIneligible = eligibility?.status == com.example.domain.model.EligibilityStatus.INELIGIBLE_MISSING_CAPABILITY ||
+                                eligibility?.status == com.example.domain.model.EligibilityStatus.INELIGIBLE_FAILED
+
+            if (isIneligible &&
+                !func.acceptedInputs.contains(com.example.ui.metadata.AcceptedInput.DOCUMENT) &&
+                !func.acceptedInputs.contains(com.example.ui.metadata.AcceptedInput.IMAGE)
+            ) {
+                Toast.makeText(context, "Diese Funktion ist für die aktuelle Quelle nicht verfügbar.", Toast.LENGTH_SHORT).show()
+            } else if (func.acceptedInputs.contains(com.example.ui.metadata.AcceptedInput.DOCUMENT)) {
                 activeFunction = func
                 if (func.type != null) {
                     viewModel.setAnalysisType(func.type)
@@ -470,7 +483,10 @@ fun RelevantorApp(viewModel: MainViewModel) {
                     savedHistories = savedHistories,
                     authStatus = authStatus,
                     urlInput = urlInput,
-                    onUrlInputChange = { urlInput = it },
+                    onUrlInputChange = {
+                        urlInput = it
+                        viewModel.updateRawInput(it)
+                    },
                     useSearchGrounding = useSearchGrounding,
                     onSearchGroundingChange = { useSearchGrounding = it },
                     freeQueryInput = freeQueryInput,
@@ -482,7 +498,8 @@ fun RelevantorApp(viewModel: MainViewModel) {
                     favoritesList = favoritesList,
                     onFunctionClick = onFunctionClick,
                     onToggleFavorite = { id -> viewModel.toggleFavorite(id) },
-                    activeFunction = activeFunction
+                    activeFunction = activeFunction,
+                    featureEligibilityMap = featureEligibilityMap
                 )
             }
         }
@@ -493,7 +510,10 @@ fun RelevantorApp(viewModel: MainViewModel) {
             savedHistories = savedHistories,
             authStatus = authStatus,
             urlInput = urlInput,
-            onUrlInputChange = { urlInput = it },
+            onUrlInputChange = {
+                urlInput = it
+                viewModel.updateRawInput(it)
+            },
             useSearchGrounding = useSearchGrounding,
             onSearchGroundingChange = { useSearchGrounding = it },
             freeQueryInput = freeQueryInput,
@@ -505,7 +525,8 @@ fun RelevantorApp(viewModel: MainViewModel) {
             favoritesList = favoritesList,
             onFunctionClick = onFunctionClick,
             onToggleFavorite = { id -> viewModel.toggleFavorite(id) },
-            activeFunction = activeFunction
+            activeFunction = activeFunction,
+            featureEligibilityMap = featureEligibilityMap
         )
     }
 }
@@ -533,10 +554,13 @@ fun TabletLayout(
     favoritesList: List<String>,
     onFunctionClick: (FunctionInfo) -> Unit,
     onToggleFavorite: (String) -> Unit,
-    activeFunction: FunctionInfo?
+    activeFunction: FunctionInfo?,
+    featureEligibilityMap: Map<String, com.example.domain.model.FunctionEligibility> = emptyMap()
 ) {
     val clipboardManager = LocalClipboardManager.current
     val context = LocalContext.current
+    var showMenu by remember { mutableStateOf(false) }
+    var showBasisReportDialog by remember { mutableStateOf(false) }
     var currentSubView by remember { mutableStateOf("start") } // "start", "settings"
 
     Row(modifier = Modifier.fillMaxSize()) {
@@ -673,7 +697,8 @@ fun TabletLayout(
                                     favoritesList = favoritesList,
                                     onFunctionClick = onFunctionClick,
                                     onToggleFavorite = onToggleFavorite,
-                                    onEditClick = { onTabChange(AppTab.FAVORITEN) }
+                                    onEditClick = { onTabChange(AppTab.FAVORITEN) },
+                                    featureEligibilityMap = featureEligibilityMap
                                 )
 
                                 // Category Specific Workspace List
@@ -681,7 +706,8 @@ fun TabletLayout(
                                     category = activeCategory,
                                     onFunctionClick = onFunctionClick,
                                     favoritesList = favoritesList,
-                                    onToggleFavorite = onToggleFavorite
+                                    onToggleFavorite = onToggleFavorite,
+                                    featureEligibilityMap = featureEligibilityMap
                                 )
                             }
 
@@ -821,12 +847,16 @@ fun SmartphoneLayout(
     favoritesList: List<String>,
     onFunctionClick: (FunctionInfo) -> Unit,
     onToggleFavorite: (String) -> Unit,
-    activeFunction: FunctionInfo?
+    activeFunction: FunctionInfo?,
+    featureEligibilityMap: Map<String, com.example.domain.model.FunctionEligibility> = emptyMap()
 ) {
     var selectedCategoryForDetailId by rememberSaveable { mutableStateOf<String?>(null) }
     val selectedCategoryForDetail = categoriesList.find { it.id == selectedCategoryForDetailId }
     val clipboardManager = LocalClipboardManager.current
     val context = LocalContext.current
+
+    var showMenu by remember { mutableStateOf(false) }
+    var showBasisReportDialog by remember { mutableStateOf(false) }
 
     Scaffold(
         bottomBar = {
@@ -1019,8 +1049,23 @@ fun SmartphoneLayout(
                                                     horizontalArrangement = Arrangement.spacedBy(8.dp),
                                                     verticalAlignment = Alignment.CenterVertically
                                                 ) {
-                                                    IconButton(onClick = {}) {
-                                                        Icon(Icons.Default.MoreVert, contentDescription = "Menü", tint = Color.Gray)
+                                                    Box {
+                                                        IconButton(onClick = { showMenu = true }) {
+                                                            Icon(Icons.Default.MoreVert, contentDescription = "Menü", tint = Color.Gray)
+                                                        }
+                                                        DropdownMenu(
+                                                            expanded = showMenu,
+                                                            onDismissRequest = { showMenu = false }
+                                                        ) {
+                                                            DropdownMenuItem(
+                                                                text = { Text("Diagnose & Reports") },
+                                                                onClick = {
+                                                                    showMenu = false
+                                                                    showBasisReportDialog = true
+                                                                },
+                                                                leadingIcon = { Icon(Icons.Default.Info, contentDescription = null) }
+                                                            )
+                                                        }
                                                     }
                                                 }
                                             }
@@ -1040,7 +1085,8 @@ fun SmartphoneLayout(
                                                 favoritesList = favoritesList,
                                                 onFunctionClick = onFunctionClick,
                                                 onToggleFavorite = onToggleFavorite,
-                                                onEditClick = { onTabChange(AppTab.FAVORITEN) }
+                                                onEditClick = { onTabChange(AppTab.FAVORITEN) },
+                                                featureEligibilityMap = featureEligibilityMap
                                             )
                                         }
                                     }
@@ -1144,11 +1190,24 @@ fun SmartphoneLayout(
                                                 ) {
                                                     category.functions.forEach { func ->
                                                         val isFav = favoritesList.contains(func.id)
+                                                        val eligibility = featureEligibilityMap[func.id]
+                                                        val isIneligible = eligibility?.status == com.example.domain.model.EligibilityStatus.INELIGIBLE_MISSING_CAPABILITY ||
+                                                                            eligibility?.status == com.example.domain.model.EligibilityStatus.INELIGIBLE_FAILED
+                                                        val cardAlpha = if (isIneligible && !func.isPlaceholder &&
+                                                            !func.acceptedInputs.contains(com.example.ui.metadata.AcceptedInput.DOCUMENT) &&
+                                                            !func.acceptedInputs.contains(com.example.ui.metadata.AcceptedInput.IMAGE)
+                                                        ) 0.35f else 1.0f
+                                                        val cardBg = if (isIneligible && !func.isPlaceholder &&
+                                                            !func.acceptedInputs.contains(com.example.ui.metadata.AcceptedInput.DOCUMENT) &&
+                                                            !func.acceptedInputs.contains(com.example.ui.metadata.AcceptedInput.IMAGE)
+                                                        ) Color(0xFFF1F5F9) else Color(0xFFF8FAFC)
+
                                                         Card(
                                                             modifier = Modifier
                                                                 .fillMaxWidth()
+                                                                .graphicsLayer { alpha = cardAlpha }
                                                                 .clickable { onFunctionClick(func) },
-                                                            colors = CardDefaults.cardColors(containerColor = Color(0xFFF8FAFC)),
+                                                            colors = CardDefaults.cardColors(containerColor = cardBg),
                                                             shape = RoundedCornerShape(8.dp),
                                                             border = BorderStroke(1.dp, Color(0xFFE2E8F0))
                                                         ) {
@@ -1247,7 +1306,8 @@ fun SmartphoneLayout(
                                     onFunctionClick = onFunctionClick,
                                     onToggleFavorite = onToggleFavorite,
                                     onMoveUp = { viewModel.moveFavoriteUp(it) },
-                                    onMoveDown = { viewModel.moveFavoriteDown(it) }
+                                    onMoveDown = { viewModel.moveFavoriteDown(it) },
+                                    featureEligibilityMap = featureEligibilityMap
                                 )
                             }
                         }
@@ -1285,6 +1345,13 @@ fun SmartphoneLayout(
             }
         }
     }
+
+    com.example.ui.components.DiagnosticCenterDialog(
+        showDialog = showBasisReportDialog,
+        onDismiss = { showBasisReportDialog = false },
+        clipboardManager = clipboardManager,
+        context = context
+    )
 }
 
 // ----------------------------------------------------------------------------------
@@ -1334,46 +1401,130 @@ fun UrlInputCard(
     clipboardManager: androidx.compose.ui.platform.ClipboardManager,
     context: android.content.Context
 ) {
-    OutlinedTextField(
-        value = urlInput,
-        onValueChange = onUrlInputChange,
-        placeholder = { Text("URL eingeben", fontSize = 14.sp, color = Color.Gray) },
-        modifier = Modifier
-            .fillMaxWidth()
-            .heightIn(min = 50.dp),
-        singleLine = true,
-        leadingIcon = { Icon(Icons.Default.Link, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(20.dp)) },
-        trailingIcon = {
-            if (urlInput.isNotBlank()) {
-                IconButton(onClick = { onUrlInputChange("") }, modifier = Modifier.size(24.dp)) {
-                    Icon(Icons.Default.Close, contentDescription = "Löschen", modifier = Modifier.size(16.dp))
+    Column(modifier = Modifier.fillMaxWidth()) {
+        OutlinedTextField(
+            value = urlInput,
+            onValueChange = onUrlInputChange,
+            placeholder = { Text("URL eingeben", fontSize = 14.sp, color = Color.Gray) },
+            modifier = Modifier
+                .fillMaxWidth()
+                .heightIn(min = 50.dp),
+            singleLine = true,
+            leadingIcon = { Icon(Icons.Default.Link, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(20.dp)) },
+            trailingIcon = {
+                if (urlInput.isNotBlank()) {
+                    IconButton(onClick = { onUrlInputChange("") }, modifier = Modifier.size(24.dp)) {
+                        Icon(Icons.Default.Close, contentDescription = "Löschen", modifier = Modifier.size(16.dp))
+                    }
+                } else {
+                    IconButton(
+                        onClick = {
+                            val clipText = clipboardManager.getText()?.text
+                            if (!clipText.isNullOrBlank()) {
+                                onUrlInputChange(clipText)
+                                Toast.makeText(context, "Link eingefügt!", Toast.LENGTH_SHORT).show()
+                            } else {
+                                Toast.makeText(context, "Zwischenablage ist leer!", Toast.LENGTH_SHORT).show()
+                            }
+                        },
+                        modifier = Modifier.size(24.dp)
+                    ) {
+                        Icon(Icons.Default.ContentPaste, contentDescription = "Einfügen", tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(16.dp))
+                    }
                 }
-            } else {
-                IconButton(
-                    onClick = {
-                        val clipText = clipboardManager.getText()?.text
-                        if (!clipText.isNullOrBlank()) {
-                            onUrlInputChange(clipText)
-                            Toast.makeText(context, "Link eingefügt!", Toast.LENGTH_SHORT).show()
-                        } else {
-                            Toast.makeText(context, "Zwischenablage ist leer!", Toast.LENGTH_SHORT).show()
+            },
+            shape = RoundedCornerShape(12.dp),
+            colors = OutlinedTextFieldDefaults.colors(
+                focusedContainerColor = Color.White,
+                unfocusedContainerColor = Color.White,
+                focusedBorderColor = MaterialTheme.colorScheme.primary,
+                unfocusedBorderColor = Color(0xFFE2E8F0)
+            ),
+            textStyle = LocalTextStyle.current.copy(fontSize = 14.sp)
+        )
+        
+        if (BuildConfig.DEBUG) {
+            DebugUrlSelection(
+                onUrlInputChange = onUrlInputChange,
+                currentUrl = urlInput
+            )
+        }
+    }
+}
+
+@Composable
+fun DebugUrlSelection(
+    onUrlInputChange: (String) -> Unit,
+    currentUrl: String = ""
+) {
+    val debugRefs = com.example.data.diagnostics.TestReferenceRegistry.getLiveDebugReferences()
+    var expanded by remember { mutableStateOf(false) }
+
+    val matchingRef = debugRefs.firstOrNull { it.second == currentUrl }
+    val displayLabel = if (matchingRef != null) {
+        "Test: ${matchingRef.first}"
+    } else {
+        "Test-URL auswählen"
+    }
+
+    Box(modifier = Modifier.padding(top = 6.dp)) {
+        Surface(
+            onClick = { expanded = true },
+            color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f),
+            shape = RoundedCornerShape(8.dp),
+            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)
+        ) {
+            Row(
+                modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(4.dp)
+            ) {
+                Text(
+                    text = displayLabel,
+                    fontSize = 12.sp,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    fontWeight = FontWeight.Medium
+                )
+                Icon(
+                    imageVector = Icons.Default.ArrowDropDown,
+                    contentDescription = "Test-URL Dropdown öffnen",
+                    modifier = Modifier.size(16.dp),
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+        }
+
+        DropdownMenu(
+            expanded = expanded,
+            onDismissRequest = { expanded = false }
+        ) {
+            debugRefs.forEach { (label, url) ->
+                DropdownMenuItem(
+                    text = {
+                        Column {
+                            Text(
+                                text = label,
+                                fontWeight = FontWeight.SemiBold,
+                                fontSize = 13.sp,
+                                color = MaterialTheme.colorScheme.onSurface
+                            )
+                            Text(
+                                text = url,
+                                fontSize = 10.sp,
+                                color = Color.Gray,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
                         }
                     },
-                    modifier = Modifier.size(24.dp)
-                ) {
-                    Icon(Icons.Default.ContentPaste, contentDescription = "Einfügen", tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(16.dp))
-                }
+                    onClick = {
+                        onUrlInputChange(url)
+                        expanded = false
+                    }
+                )
             }
-        },
-        shape = RoundedCornerShape(12.dp),
-        colors = OutlinedTextFieldDefaults.colors(
-            focusedContainerColor = Color.White,
-            unfocusedContainerColor = Color.White,
-            focusedBorderColor = MaterialTheme.colorScheme.primary,
-            unfocusedBorderColor = Color(0xFFE2E8F0)
-        ),
-        textStyle = LocalTextStyle.current.copy(fontSize = 14.sp)
-    )
+        }
+    }
 }
 
 @Composable
@@ -1381,7 +1532,8 @@ fun FavoritesPanel(
     favoritesList: List<String>,
     onFunctionClick: (FunctionInfo) -> Unit,
     onToggleFavorite: (String) -> Unit,
-    onEditClick: () -> Unit = {}
+    onEditClick: () -> Unit = {},
+    featureEligibilityMap: Map<String, com.example.domain.model.FunctionEligibility> = emptyMap()
 ) {
     Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
         Row(
@@ -1416,12 +1568,25 @@ fun FavoritesPanel(
                 }
             } else {
                 favFuncs.forEach { func ->
+                    val eligibility = featureEligibilityMap[func.id]
+                    val isIneligible = eligibility?.status == com.example.domain.model.EligibilityStatus.INELIGIBLE_MISSING_CAPABILITY ||
+                                        eligibility?.status == com.example.domain.model.EligibilityStatus.INELIGIBLE_FAILED
+                    val cardAlpha = if (isIneligible && !func.isPlaceholder &&
+                        !func.acceptedInputs.contains(com.example.ui.metadata.AcceptedInput.DOCUMENT) &&
+                        !func.acceptedInputs.contains(com.example.ui.metadata.AcceptedInput.IMAGE)
+                    ) 0.35f else 1.0f
+                    val cardBg = if (isIneligible && !func.isPlaceholder &&
+                        !func.acceptedInputs.contains(com.example.ui.metadata.AcceptedInput.DOCUMENT) &&
+                        !func.acceptedInputs.contains(com.example.ui.metadata.AcceptedInput.IMAGE)
+                    ) Color(0xFFF8FAFC) else Color.White
+
                     Card(
                         modifier = Modifier
                             .width(145.dp)
                             .height(80.dp)
+                            .graphicsLayer { alpha = cardAlpha }
                             .clickable { onFunctionClick(func) },
-                        colors = CardDefaults.cardColors(containerColor = Color.White),
+                        colors = CardDefaults.cardColors(containerColor = cardBg),
                         shape = RoundedCornerShape(12.dp),
                         border = BorderStroke(1.dp, Color(0xFFF1F5F9))
                     ) {
@@ -1474,7 +1639,8 @@ fun CategoryWorkspaceList(
     category: CategoryInfo,
     onFunctionClick: (FunctionInfo) -> Unit,
     favoritesList: List<String>,
-    onToggleFavorite: (String) -> Unit
+    onToggleFavorite: (String) -> Unit,
+    featureEligibilityMap: Map<String, com.example.domain.model.FunctionEligibility> = emptyMap()
 ) {
     Column(
         modifier = Modifier.fillMaxWidth(),
@@ -1506,11 +1672,24 @@ fun CategoryWorkspaceList(
         // Individual Cards for functions
         category.functions.forEach { func ->
             val isFav = favoritesList.contains(func.id)
+            val eligibility = featureEligibilityMap[func.id]
+            val isIneligible = eligibility?.status == com.example.domain.model.EligibilityStatus.INELIGIBLE_MISSING_CAPABILITY ||
+                                eligibility?.status == com.example.domain.model.EligibilityStatus.INELIGIBLE_FAILED
+            val cardAlpha = if (isIneligible && !func.isPlaceholder &&
+                !func.acceptedInputs.contains(com.example.ui.metadata.AcceptedInput.DOCUMENT) &&
+                !func.acceptedInputs.contains(com.example.ui.metadata.AcceptedInput.IMAGE)
+            ) 0.35f else 1.0f
+            val cardBg = if (isIneligible && !func.isPlaceholder &&
+                !func.acceptedInputs.contains(com.example.ui.metadata.AcceptedInput.DOCUMENT) &&
+                !func.acceptedInputs.contains(com.example.ui.metadata.AcceptedInput.IMAGE)
+            ) Color(0xFFF8FAFC) else Color.White
+
             Card(
                 modifier = Modifier
                     .fillMaxWidth()
+                    .graphicsLayer { alpha = cardAlpha }
                     .clickable { onFunctionClick(func) },
-                colors = CardDefaults.cardColors(containerColor = Color.White),
+                colors = CardDefaults.cardColors(containerColor = cardBg),
                 shape = RoundedCornerShape(10.dp),
                 border = BorderStroke(1.dp, Color(0xFFF1F5F9))
             ) {
@@ -2037,7 +2216,7 @@ fun ResultScreen(
                             onDismissRequest = { showMenu = false }
                         ) {
                             DropdownMenuItem(
-                                text = { Text("Basis-Diagnose-Report (Dev)") },
+                                text = { Text("Diagnose & Reports") },
                                 onClick = {
                                     showMenu = false
                                     showBasisReportDialog = true
@@ -2175,7 +2354,12 @@ fun ResultScreen(
                 }
             }
 
-            if ((activeFunction.type == com.example.data.AnalysisType.MULTIMEDIA_ANALYSIS || activeFunction.id == "MULTIMEDIA_ANALYSIS") && summary.fallbackUsed) {
+            val isDegradedSupportedFunction = activeFunction.type == com.example.data.AnalysisType.MULTIMEDIA_ANALYSIS ||
+                activeFunction.id == "MULTIMEDIA_ANALYSIS" ||
+                activeFunction.type == com.example.data.AnalysisType.FREE_SOURCE_QUERY ||
+                activeFunction.id == "FREE_SOURCE_QUERY" ||
+                activeFunction.id == "FREIE_QUELLENANFRAGE"
+            if (summary.fallbackUsed && isDegradedSupportedFunction) {
                 Card(
                     modifier = Modifier.fillMaxWidth(),
                     colors = CardDefaults.cardColors(containerColor = Color(0xFFFFF7ED)),
@@ -2277,45 +2461,13 @@ fun ResultScreen(
         )
     }
 
-    // Basis-Diagnose-Report Dialog (Dev)
-    if (showBasisReportDialog) {
-        val jsonReport = com.example.data.PipelineReportStore.getLastReportJson()
-        AlertDialog(
-            onDismissRequest = { showBasisReportDialog = false },
-            title = { Text("Basis-Diagnose-Report (Dev)", fontWeight = FontWeight.Bold, fontSize = 18.sp) },
-            text = {
-                Box(modifier = Modifier.heightIn(max = 420.dp)) {
-                    Column(
-                        modifier = Modifier
-                            .verticalScroll(rememberScrollState())
-                            .fillMaxWidth()
-                    ) {
-                        androidx.compose.foundation.text.selection.SelectionContainer {
-                            Text(
-                                text = jsonReport,
-                                fontSize = 11.sp,
-                                fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace,
-                                color = Color(0xFF1E293B)
-                            )
-                        }
-                    }
-                }
-            },
-            confirmButton = {
-                Button(onClick = { showBasisReportDialog = false }) {
-                    Text("Schließen")
-                }
-            },
-            dismissButton = {
-                TextButton(onClick = {
-                    clipboardManager.setText(AnnotatedString(jsonReport))
-                    Toast.makeText(context, "Pipeline Report (JSON) kopiert!", Toast.LENGTH_SHORT).show()
-                }) {
-                    Text("Kopieren")
-                }
-            }
-        )
-    }
+    // Diagnose Center Dialog
+    com.example.ui.components.DiagnosticCenterDialog(
+        showDialog = showBasisReportDialog,
+        onDismiss = { showBasisReportDialog = false },
+        clipboardManager = clipboardManager,
+        context = context
+    )
 
     // Preflight Diagnostics Dialog
     if (showPreflightDialog && preflightReport != null) {
@@ -2515,6 +2667,7 @@ fun ErrorScreen(
     var preflightReport by remember { mutableStateOf<com.example.data.PreflightReport?>(null) }
     var showSmokeTestHarness by remember { mutableStateOf(false) }
     var smokeTestReport by remember { mutableStateOf<com.example.data.SmokeTestHarnessReport?>(null) }
+    var showBasisReportDialog by remember { mutableStateOf(false) }
 
     Scaffold(
         containerColor = Color(0xFFF8FAFC) // Slate 50
@@ -2675,9 +2828,7 @@ fun ErrorScreen(
 
                             OutlinedButton(
                                 onClick = {
-                                    val json = com.example.data.PipelineReportStore.getLastReportJson()
-                                    clipboardManager.setText(AnnotatedString(json))
-                                    Toast.makeText(context, "Pipeline Report (JSON) kopiert!", Toast.LENGTH_SHORT).show()
+                                    showBasisReportDialog = true
                                 },
                                 shape = RoundedCornerShape(12.dp),
                                 modifier = Modifier.fillMaxWidth().height(44.dp)
@@ -2686,8 +2837,8 @@ fun ErrorScreen(
                                     verticalAlignment = Alignment.CenterVertically,
                                     horizontalArrangement = Arrangement.spacedBy(8.dp)
                                 ) {
-                                    Icon(Icons.Default.ContentCopy, contentDescription = null, modifier = Modifier.size(16.dp))
-                                    Text("Basis-Report kopieren", fontSize = 13.sp)
+                                    Icon(Icons.Default.Info, contentDescription = null, modifier = Modifier.size(16.dp))
+                                    Text("Diagnose & Reports", fontSize = 13.sp)
                                 }
                             }
                         }
@@ -2823,6 +2974,13 @@ fun ErrorScreen(
             }
         )
     }
+
+    com.example.ui.components.DiagnosticCenterDialog(
+        showDialog = showBasisReportDialog,
+        onDismiss = { showBasisReportDialog = false },
+        clipboardManager = clipboardManager,
+        context = context
+    )
 }
 
 fun getFunctionNameForAnalysis(summary: DomainSummary): String {
@@ -2934,7 +3092,8 @@ fun FavoritesTabScreen(
     onFunctionClick: (FunctionInfo) -> Unit,
     onToggleFavorite: (String) -> Unit,
     onMoveUp: (String) -> Unit = {},
-    onMoveDown: (String) -> Unit = {}
+    onMoveDown: (String) -> Unit = {},
+    featureEligibilityMap: Map<String, com.example.domain.model.FunctionEligibility> = emptyMap()
 ) {
     val allFunctionsMap = categoriesList.flatMap { it.functions }.associateBy { it.id }
     val favFuncs = favoritesList.mapNotNull { allFunctionsMap[it] }
@@ -2951,9 +3110,18 @@ fun FavoritesTabScreen(
         } else {
             LazyColumn(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 itemsIndexed(favFuncs) { index, func ->
+                    val eligibility = featureEligibilityMap[func.id]
+                    val isIneligible = eligibility?.status == com.example.domain.model.EligibilityStatus.INELIGIBLE_MISSING_CAPABILITY ||
+                                        eligibility?.status == com.example.domain.model.EligibilityStatus.INELIGIBLE_FAILED
+                    val itemAlpha = if (isIneligible && !func.isPlaceholder &&
+                        !func.acceptedInputs.contains(com.example.ui.metadata.AcceptedInput.DOCUMENT) &&
+                        !func.acceptedInputs.contains(com.example.ui.metadata.AcceptedInput.IMAGE)
+                    ) 0.35f else 1.0f
+
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
+                            .graphicsLayer { alpha = itemAlpha }
                             .clip(RoundedCornerShape(12.dp))
                             .background(Color.White)
                             .border(1.dp, MaterialTheme.colorScheme.outline, RoundedCornerShape(12.dp))

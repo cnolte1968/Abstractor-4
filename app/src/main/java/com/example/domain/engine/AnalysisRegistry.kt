@@ -64,7 +64,8 @@ data class EngineContract(
             if (output.shortDescription.isBlank()) {
                 throw IllegalStateException("Contract violation: output schema requires non-blank 'shortDescription' for functionId: $functionId")
             }
-            if (output.keyTakeaways.isEmpty()) {
+            val isFreeSourceQuery = functionId == "FREE_SOURCE_QUERY" || functionId == "FREIE_QUELLENANFRAGE"
+            if (output.keyTakeaways.isEmpty() && !(isFreeSourceQuery && output.shortDescription.isNotBlank())) {
                 throw IllegalStateException("Contract violation: output schema requires non-empty 'keyTakeaways' for functionId: $functionId")
             }
             for (takeaway in output.keyTakeaways) {

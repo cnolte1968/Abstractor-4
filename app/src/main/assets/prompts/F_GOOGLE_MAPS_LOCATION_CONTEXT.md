@@ -1,3 +1,15 @@
+# SYSTEM-PROMPT: GOOGLE_MAPS_LOCATION_CONTEXT
+
+## Prompt Metadata
+- Function Key: GOOGLE_MAPS_LOCATION_CONTEXT
+- Prompt Version: 1.0
+- Status: PROD
+- Created: UNKNOWN
+- Metadata Added: 2026-08-11
+- Last Modified: 2026-08-11
+- Change Process: CP-01
+- Output Contract: DomainSummary
+
 # PROMPT: GOOGLE_MAPS_LOCATION_CONTEXT (v1.0 LOCATION CONTEXT)
 
 ## 1. FUNKTION & SYSTEMROLLE

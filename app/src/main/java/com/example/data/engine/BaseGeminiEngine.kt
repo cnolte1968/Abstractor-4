@@ -26,6 +26,30 @@ abstract class BaseGeminiEngine(
         return digest.joinToString("") { "%02x".format(it) }
     }
 
+    protected open fun resolvePromptPath(input: CanonicalAnalysisInput): String {
+        val functionId = contract.functionId
+        val canonicalType = input.analysisType.canonical()
+        if (functionId == "FREE_SOURCE_QUERY" || canonicalType == AnalysisType.FREE_SOURCE_QUERY) {
+            if (isMultimediaSource(input)) {
+                return "prompts/F_MULTIMEDIA_SOURCE_QA.md"
+            }
+        }
+        return contract.promptPath
+    }
+
+    private fun isMultimediaSource(input: CanonicalAnalysisInput): Boolean {
+        if (input.sourceType == com.example.domain.model.SourceType.YOUTUBE) return true
+        val platform = input.metadata["sourcePlatform"]?.uppercase()
+        if (platform == "YOUTUBE") return true
+        val st = input.metadata["sourceType"]?.uppercase()
+        if (st == "VIDEO" || st == "YOUTUBE_VIDEO" || st == "MULTIMEDIA") return true
+        val extractor = input.metadata["extractor"]
+        if (extractor == "RemoteVideoInputExtractor" || extractor == "YoutubeInputExtractor") return true
+        val url = input.metadata["url"] ?: input.metadata["uri"] ?: ""
+        if (url.contains("youtube.com") || url.contains("youtu.be")) return true
+        return false
+    }
+
     override suspend fun analyze(input: CanonicalAnalysisInput): DomainSummary {
         val startTime = System.currentTimeMillis()
         val analysisType = input.analysisType
@@ -48,18 +72,21 @@ abstract class BaseGeminiEngine(
             nextStep = "prompt_loading"
         )
 
+        // Resolve effective prompt path based on functionId and input source
+        val effectivePromptPath = resolvePromptPath(input)
+
         // Load prompt via abstraction layer
-        PipelineReportStore.startStep("prompt_loading", "Prompt Loading", "Path: ${contract.promptPath}")
+        PipelineReportStore.startStep("prompt_loading", "Prompt Loading", "Path: $effectivePromptPath")
         val basePrompt = try {
-            val loaded = promptAssetLoader.loadAsset(contract.promptPath)
+            val loaded = promptAssetLoader.loadAsset(effectivePromptPath)
             PipelineReportStore.endStepPass(
                 "prompt_loading",
-                "Loaded base system instruction. Length: ${loaded.length} characters",
+                "Loaded base system instruction ($effectivePromptPath). Length: ${loaded.length} characters",
                 decision = "Load global rules"
             )
             loaded
         } catch (e: Exception) {
-            Log.e("BaseGeminiEngine", "Failed to load system instruction from path: ${contract.promptPath}", e)
+            Log.e("BaseGeminiEngine", "Failed to load system instruction from path: $effectivePromptPath", e)
             PipelineReportStore.endStepFail("prompt_loading", e)
             throw IllegalStateException("Failed to load prompt for ${contract.functionId}: ${e.message}", e)
         }
@@ -77,15 +104,15 @@ abstract class BaseGeminiEngine(
         }
 
         val promptHash = systemInstructionText.toByteArray(Charsets.UTF_8).sha256()
-        val selectedPromptFile = contract.promptPath
+        val selectedPromptFile = effectivePromptPath
         val globalRulesLoaded = systemInstructionText.contains("=== GLOBAL QUALITY RULES ===")
 
         com.example.data.GatewayDiagnostics.loadedFunctionId = contract.functionId
         com.example.data.GatewayDiagnostics.loadedAnalysisType = analysisType?.name ?: ""
         com.example.data.GatewayDiagnostics.loadedCanonicalAnalysisType = analysisType?.canonical()?.name ?: ""
         com.example.data.GatewayDiagnostics.loadedEngineName = contract.capabilities.name
-        com.example.data.GatewayDiagnostics.loadedPromptAssetFile = contract.promptPath
-        com.example.data.GatewayDiagnostics.loadedPromptResolvedAssetPath = "assets/${contract.promptPath}"
+        com.example.data.GatewayDiagnostics.loadedPromptAssetFile = effectivePromptPath
+        com.example.data.GatewayDiagnostics.loadedPromptResolvedAssetPath = "assets/$effectivePromptPath"
         com.example.data.GatewayDiagnostics.loadedPromptLength = systemInstructionText.length
         com.example.data.GatewayDiagnostics.loadedPromptSha256 = promptHash
         com.example.data.GatewayDiagnostics.loadedPromptFirst300Chars = if (systemInstructionText.length > 300) systemInstructionText.substring(0, 300) else systemInstructionText

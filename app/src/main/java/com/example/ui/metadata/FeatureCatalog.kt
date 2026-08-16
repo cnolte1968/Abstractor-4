@@ -5,6 +5,8 @@ import androidx.compose.material.icons.filled.*
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import com.example.data.AnalysisType
+import com.example.domain.model.SourceCapability
+import com.example.domain.model.SourceProfile
 
 enum class AcceptedInput {
     WEB,
@@ -26,7 +28,11 @@ data class FeatureMetadata(
     val enabled: Boolean,
     val visible: Boolean = true,
     val isPlaceholder: Boolean = false,
-    val acceptedInputs: Set<AcceptedInput> = setOf(AcceptedInput.WEB)
+    val acceptedInputs: Set<AcceptedInput> = setOf(AcceptedInput.WEB),
+    val requiredCapabilities: Set<SourceCapability> = emptySet(),
+    val requiredAlternativeGroups: List<Set<SourceCapability>> = emptyList(),
+    val optionalCapabilities: Set<SourceCapability> = emptySet(),
+    val allowedSourceTypes: Set<com.example.domain.model.SourceProfile.SourceType>? = null
 )
 
 data class CategoryMetadata(
@@ -39,6 +45,23 @@ data class CategoryMetadata(
 )
 
 object FeatureCatalog {
+    private val defaultTextCapabilityGroups = listOf(
+        setOf(SourceCapability.PAGE_ARTICLE_TEXT),
+        setOf(SourceCapability.RAW_TEXT),
+        setOf(SourceCapability.DOCUMENT_TEXT),
+        setOf(SourceCapability.TRANSCRIPT_TEXT)
+    )
+
+    private val multimediaCapabilityGroups = listOf(
+        setOf(SourceCapability.TRANSCRIPT_TEXT),
+        setOf(SourceCapability.VIDEO_METADATA),
+        setOf(SourceCapability.IMAGE_CONTENT)
+    )
+
+    private val documentCapabilityGroups = listOf(
+        setOf(SourceCapability.DOCUMENT_TEXT)
+    )
+
     val categories: List<CategoryMetadata> = listOf(
         CategoryMetadata("A", "", "Verstehen & Verdichten", Icons.Default.AutoStories, Color(0xFF2563EB), 1),
         CategoryMetadata("B", "", "Qualität, Kritik & Einordnung", Icons.Default.Shield, Color(0xFF4F46E5), 2),
@@ -50,18 +73,18 @@ object FeatureCatalog {
 
     val features: List<FeatureMetadata> = listOf(
         // Category A
-        FeatureMetadata("WEB_SUMMARY", AnalysisType.WEB_SUMMARY, "Zusammenfassung", "Quelle kompakt zusammenfassen", "A", 1, Icons.Default.Description, Color(0xFF2563EB), enabled = true, acceptedInputs = setOf(AcceptedInput.WEB)),
-        FeatureMetadata("KEY_TAKEAWAYS", AnalysisType.KEY_TAKEAWAYS, "3 Kernaussagen", "Wichtigste Erkenntnisse extrahieren", "A", 2, Icons.Default.FormatListNumbered, Color(0xFF2563EB), enabled = true, acceptedInputs = setOf(AcceptedInput.WEB)),
-        FeatureMetadata("FREE_SOURCE_QUERY", AnalysisType.FREE_SOURCE_QUERY, "Frage an die Quelle", "Spezifische Fragen stellen", "A", 3, Icons.Default.QuestionAnswer, Color(0xFF2563EB), enabled = true, acceptedInputs = setOf(AcceptedInput.WEB)),
-        FeatureMetadata("MULTIMEDIA_ANALYSIS", AnalysisType.MULTIMEDIA_ANALYSIS, "Video- & Multimedia-Analyse", "Video- & Podcast-Inhalte zusammenfassen", "A", 4, Icons.Default.PlayArrow, Color(0xFF2563EB), enabled = true, visible = false, acceptedInputs = setOf(AcceptedInput.WEB, AcceptedInput.MULTIMEDIA)),
+        FeatureMetadata("WEB_SUMMARY", AnalysisType.WEB_SUMMARY, "Zusammenfassung", "Quelle kompakt zusammenfassen", "A", 1, Icons.Default.Description, Color(0xFF2563EB), enabled = true, acceptedInputs = setOf(AcceptedInput.WEB), requiredAlternativeGroups = defaultTextCapabilityGroups, allowedSourceTypes = setOf(SourceProfile.SourceType.WEB_PAGE, SourceProfile.SourceType.RAW_TEXT, SourceProfile.SourceType.DOCUMENT)),
+        FeatureMetadata("KEY_TAKEAWAYS", AnalysisType.KEY_TAKEAWAYS, "3 Kernaussagen", "Wichtigste Erkenntnisse extrahieren", "A", 2, Icons.Default.FormatListNumbered, Color(0xFF2563EB), enabled = true, acceptedInputs = setOf(AcceptedInput.WEB), requiredAlternativeGroups = defaultTextCapabilityGroups, allowedSourceTypes = setOf(SourceProfile.SourceType.WEB_PAGE, SourceProfile.SourceType.RAW_TEXT, SourceProfile.SourceType.DOCUMENT)),
+        FeatureMetadata("FREE_SOURCE_QUERY", AnalysisType.FREE_SOURCE_QUERY, "Frage an die Quelle", "Spezifische Fragen stellen", "A", 3, Icons.Default.QuestionAnswer, Color(0xFF2563EB), enabled = true, acceptedInputs = setOf(AcceptedInput.WEB), requiredAlternativeGroups = defaultTextCapabilityGroups, allowedSourceTypes = setOf(SourceProfile.SourceType.WEB_PAGE, SourceProfile.SourceType.RAW_TEXT, SourceProfile.SourceType.DOCUMENT, SourceProfile.SourceType.VIDEO)),
+        FeatureMetadata("MULTIMEDIA_ANALYSIS", AnalysisType.MULTIMEDIA_ANALYSIS, "Video- & Multimedia-Analyse", "Video- & Podcast-Inhalte zusammenfassen", "A", 4, Icons.Default.PlayArrow, Color(0xFF2563EB), enabled = true, visible = true, acceptedInputs = setOf(AcceptedInput.WEB, AcceptedInput.MULTIMEDIA), requiredAlternativeGroups = multimediaCapabilityGroups, allowedSourceTypes = setOf(SourceProfile.SourceType.VIDEO)),
 
         // Category B
-        FeatureMetadata("FRESHNESS_CHECK", AnalysisType.FRESHNESS_CHECK, "Aktualitäts-Check", "Aktualität der Inhalte bewerten", "B", 1, Icons.Default.Event, Color(0xFF4F46E5), enabled = true, acceptedInputs = setOf(AcceptedInput.WEB)),
-        FeatureMetadata("MISINFORMATION_RADAR", AnalysisType.MISINFORMATION_RADAR, "Fehlinformations-Radar", "Fragwürdige Aussagen erkennen", "B", 2, Icons.Default.Radar, Color(0xFF4F46E5), enabled = true, acceptedInputs = setOf(AcceptedInput.WEB)),
-        FeatureMetadata("FACTS_VS_OPINIONS", AnalysisType.FACTS_VS_OPINIONS, "Fakt-oder-Meinung", "Fakten, Meinungen und Spekulationen trennen", "B", 3, Icons.Default.Balance, Color(0xFF4F46E5), enabled = true, acceptedInputs = setOf(AcceptedInput.WEB)),
-        FeatureMetadata("RISK_ANALYSIS", AnalysisType.RISK_ANALYSIS, "Risikoanalyse", "Risiken identifizieren", "B", 4, Icons.Default.Warning, Color(0xFF4F46E5), enabled = true, acceptedInputs = setOf(AcceptedInput.WEB)),
-        FeatureMetadata("PERSPECTIVES_COUNTERPOSITIONS", AnalysisType.PERSPECTIVES_COUNTERPOSITIONS, "Perspektiven- & Gegenpositionen-Finder", "Fehlende Sichtweisen und Gegenargumente aufdecken", "B", 5, Icons.Default.People, Color(0xFF4F46E5), enabled = true, acceptedInputs = setOf(AcceptedInput.WEB)),
-        FeatureMetadata("RELEVANT_ASPECTS", AnalysisType.RELEVANT_ASPECTS, "Weitere relevante Aspekte", "Zusätzliche für das Thema relevante Gesichtspunkte identifizieren", "B", 6, Icons.Default.Add, Color(0xFF4F46E5), enabled = true, acceptedInputs = setOf(AcceptedInput.WEB)),
+        FeatureMetadata("FRESHNESS_CHECK", AnalysisType.FRESHNESS_CHECK, "Aktualitäts-Check", "Aktualität der Inhalte bewerten", "B", 1, Icons.Default.Event, Color(0xFF4F46E5), enabled = true, acceptedInputs = setOf(AcceptedInput.WEB), requiredAlternativeGroups = defaultTextCapabilityGroups),
+        FeatureMetadata("MISINFORMATION_RADAR", AnalysisType.MISINFORMATION_RADAR, "Fehlinformations-Radar", "Fragwürdige Aussagen erkennen", "B", 2, Icons.Default.Radar, Color(0xFF4F46E5), enabled = true, acceptedInputs = setOf(AcceptedInput.WEB), requiredAlternativeGroups = defaultTextCapabilityGroups),
+        FeatureMetadata("FACTS_VS_OPINIONS", AnalysisType.FACTS_VS_OPINIONS, "Fakt-oder-Meinung", "Fakten, Meinungen und Spekulationen trennen", "B", 3, Icons.Default.Balance, Color(0xFF4F46E5), enabled = true, acceptedInputs = setOf(AcceptedInput.WEB), requiredAlternativeGroups = defaultTextCapabilityGroups),
+        FeatureMetadata("RISK_ANALYSIS", AnalysisType.RISK_ANALYSIS, "Risikoanalyse", "Risiken identifizieren", "B", 4, Icons.Default.Warning, Color(0xFF4F46E5), enabled = true, acceptedInputs = setOf(AcceptedInput.WEB), requiredAlternativeGroups = defaultTextCapabilityGroups),
+        FeatureMetadata("PERSPECTIVES_COUNTERPOSITIONS", AnalysisType.PERSPECTIVES_COUNTERPOSITIONS, "Perspektiven- & Gegenpositionen-Finder", "Fehlende Sichtweisen und Gegenargumente aufdecken", "B", 5, Icons.Default.People, Color(0xFF4F46E5), enabled = true, acceptedInputs = setOf(AcceptedInput.WEB), requiredAlternativeGroups = defaultTextCapabilityGroups),
+        FeatureMetadata("RELEVANT_ASPECTS", AnalysisType.RELEVANT_ASPECTS, "Weitere relevante Aspekte", "Zusätzliche für das Thema relevante Gesichtspunkte identifizieren", "B", 6, Icons.Default.Add, Color(0xFF4F46E5), enabled = true, acceptedInputs = setOf(AcceptedInput.WEB), requiredAlternativeGroups = defaultTextCapabilityGroups),
 
         // Category C
         FeatureMetadata("INFOGRAPHIC_GENERATOR", null, "Infografik-Generator", "Infografiken erzeugen", "C", 1, Icons.Default.Image, Color(0xFF059669), enabled = false, isPlaceholder = true, acceptedInputs = setOf(AcceptedInput.WEB)),
@@ -74,13 +97,13 @@ object FeatureCatalog {
         FeatureMetadata("MULTI_URL_SUMMARY", null, "Zusammenfassung aus mehreren URL", "Mehrere Quellen zusammenfassen", "D", 3, Icons.Default.Layers, Color(0xFFD97706), enabled = false, isPlaceholder = true, acceptedInputs = setOf(AcceptedInput.MULTI_URL)),
 
         // Category F (Google Maps)
-        FeatureMetadata("GOOGLE_MAPS_ANALYZER", AnalysisType.GOOGLE_MAPS_ANALYZER, "Google Maps Analyser", "Ortsparameter und Places API Details analysieren", "F", 1, Icons.Default.Place, Color(0xFFEA4335), enabled = true, acceptedInputs = setOf(AcceptedInput.WEB)),
-        FeatureMetadata("GOOGLE_MAPS_LOCATION_CONTEXT", AnalysisType.GOOGLE_MAPS_LOCATION_CONTEXT, "Kontext zum Ort", "Umfeld-, Orts- und Hintergrundkontext analysieren", "F", 2, Icons.Default.Map, Color(0xFFEA4335), enabled = true, acceptedInputs = setOf(AcceptedInput.WEB)),
-        FeatureMetadata("GOOGLE_MAPS_LOCATION_QUERY", AnalysisType.GOOGLE_MAPS_LOCATION_QUERY, "Frage zum Ort", "Spezifische Fragen zu einer Location beantworten", "F", 3, Icons.Default.QuestionAnswer, Color(0xFFEA4335), enabled = true, acceptedInputs = setOf(AcceptedInput.WEB)),
+        FeatureMetadata("GOOGLE_MAPS_ANALYZER", AnalysisType.GOOGLE_MAPS_ANALYZER, "Google Maps Analyser", "Ortsparameter und Places API Details analysieren", "F", 1, Icons.Default.Place, Color(0xFFEA4335), enabled = true, acceptedInputs = setOf(AcceptedInput.WEB), requiredCapabilities = setOf(SourceCapability.PLACE_CONTEXT), allowedSourceTypes = setOf(SourceProfile.SourceType.PLACE)),
+        FeatureMetadata("GOOGLE_MAPS_LOCATION_CONTEXT", AnalysisType.GOOGLE_MAPS_LOCATION_CONTEXT, "Kontext zum Ort", "Umfeld-, Orts- und Hintergrundkontext analysieren", "F", 2, Icons.Default.Map, Color(0xFFEA4335), enabled = true, acceptedInputs = setOf(AcceptedInput.WEB), requiredCapabilities = setOf(SourceCapability.PLACE_CONTEXT), allowedSourceTypes = setOf(SourceProfile.SourceType.PLACE)),
+        FeatureMetadata("GOOGLE_MAPS_LOCATION_QUERY", AnalysisType.GOOGLE_MAPS_LOCATION_QUERY, "Frage zum Ort", "Spezifische Fragen zu einer Location beantworten", "F", 3, Icons.Default.QuestionAnswer, Color(0xFFEA4335), enabled = true, acceptedInputs = setOf(AcceptedInput.WEB), requiredCapabilities = setOf(SourceCapability.PLACE_CONTEXT), allowedSourceTypes = setOf(SourceProfile.SourceType.PLACE)),
 
         // Category E
-        FeatureMetadata("DOCUMENT_SUMMARY", AnalysisType.DOCUMENT_SUMMARY, "Dokument zusammenfassen", "Dateiinhalt kompakt analysieren", "E", 1, Icons.Default.Article, Color(0xFF0891B2), enabled = true, acceptedInputs = setOf(AcceptedInput.DOCUMENT)),
-        FeatureMetadata("PHOTO_SCREENSHOT_ANALYSIS", AnalysisType.PHOTO_SCREENSHOT_ANALYSIS, "Foto & Screenshots auswerten", "Bildinhalte beschreiben und einordnen", "E", 2, Icons.Default.AddAPhoto, Color(0xFF0891B2), enabled = true, isPlaceholder = false, acceptedInputs = setOf(AcceptedInput.IMAGE)),
-        FeatureMetadata("AI_IMAGE_DETECTOR", null, "Bild mit KI erzeugt?", "Hinweise auf KI-generierte oder manipulierte Bilder prüfen", "E", 3, Icons.Default.Image, Color(0xFF0891B2), enabled = false, isPlaceholder = true, acceptedInputs = setOf(AcceptedInput.IMAGE))
+        FeatureMetadata("DOCUMENT_SUMMARY", AnalysisType.DOCUMENT_SUMMARY, "Dokument zusammenfassen", "Dateiinhalt kompakt analysieren", "E", 1, Icons.Default.Article, Color(0xFF0891B2), enabled = true, acceptedInputs = setOf(AcceptedInput.DOCUMENT), requiredAlternativeGroups = documentCapabilityGroups, allowedSourceTypes = setOf(SourceProfile.SourceType.DOCUMENT)),
+        FeatureMetadata("PHOTO_SCREENSHOT_ANALYSIS", AnalysisType.PHOTO_SCREENSHOT_ANALYSIS, "Foto & Screenshots auswerten", "Bildinhalte beschreiben und einordnen", "E", 2, Icons.Default.AddAPhoto, Color(0xFF0891B2), enabled = true, isPlaceholder = false, acceptedInputs = setOf(AcceptedInput.IMAGE), requiredCapabilities = setOf(SourceCapability.IMAGE_CONTENT)),
+        FeatureMetadata("AI_IMAGE_DETECTOR", null, "Bild mit KI erzeugt?", "Hinweise auf KI-generierte oder manipulierte Bilder prüfen", "E", 3, Icons.Default.Image, Color(0xFF0891B2), enabled = false, isPlaceholder = true, acceptedInputs = setOf(AcceptedInput.IMAGE), requiredCapabilities = setOf(SourceCapability.IMAGE_CONTENT))
     ).sortedWith(compareBy({ it.category }, { it.sortOrder }))
 }

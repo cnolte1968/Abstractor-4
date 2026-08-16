@@ -1,3 +1,15 @@
+# SYSTEM-PROMPT: GOOGLE_MAPS_ANALYZER
+
+## Prompt Metadata
+- Function Key: GOOGLE_MAPS_ANALYZER
+- Prompt Version: 4.0
+- Status: PROD
+- Created: UNKNOWN
+- Metadata Added: 2026-08-11
+- Last Modified: 2026-08-11
+- Change Process: CP-01
+- Output Contract: DomainSummary
+
 # RELEVANTOR – FUNKTIONSPROMPT: GOOGLE_MAPS_ANALYZER (v4.0 QUALITY OPTIMIZED)
 
 ## 1. FUNKTION & SYSTEMROLLE

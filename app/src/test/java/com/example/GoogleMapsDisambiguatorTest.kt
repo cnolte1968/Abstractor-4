@@ -138,4 +138,84 @@ class GoogleMapsDisambiguatorTest {
         assertNotNull(result)
         assertEquals("1", result?.id)
     }
+
+    @Test
+    fun `echter Maps-Short-Fall WgXTvya1yCDJjameA waehlt ChIJJ7Q_mWE72jARcEMQAjiMjLw ueber CID eindeutig aus`() {
+        val urlInfo = UrlInfo(
+            placeName = "QXV3+893 โจ๊กหลังมอ ประตูวิศวะ (Congee street food), Tambon Su Thep, Amphoe Mueang Chiang Mai, Chang Wat Chiang Mai 50200",
+            address = null,
+            lat = null,
+            lng = null,
+            cid = "13586388348050621296"
+        )
+        val candidates = listOf(
+            Candidate(
+                id = "ChIJJ7Q_mWE72jARcEMQAjiMjLw",
+                name = "โจ๊กหลังมอ ประตูวิศวะ (Congee street food)",
+                address = "QXV3+893, Suthep, Mueang Chiang Mai District, Chiang Mai 50200, Thailand",
+                lat = 18.7932652,
+                lng = 98.9534196,
+                cid = "13586388348050621296"
+            ),
+            Candidate(
+                id = "ChIJJUSXkHs62jARid55MJicitw",
+                name = "Ton Payom Congee",
+                address = "99 29 Suthep Rd, Tambon Su Thep, Amphoe Mueang Chiang Mai, Chang Wat Chiang Mai 50200, Thailand",
+                lat = 18.7902888,
+                lng = 98.9622648,
+                cid = "15891686412592471689"
+            ),
+            Candidate(
+                id = "ChIJJ4nR34Q62jARy-kbtdXlPuE",
+                name = "Suan Dok Porridge",
+                address = "QXRH+297 Old City Si Phum, Mueang Chiang Mai District, Chiang Mai 50200, Thailand",
+                lat = 18.7900425,
+                lng = 98.9784175,
+                cid = "16230662813119146443"
+            ),
+            Candidate(
+                id = "ChIJt8WjxJ862jARory0HbNWBk0",
+                name = "โจ๊กต้มเลือดหมู ประตูเชียงใหม่",
+                address = "45 Prapokklao Road Old City Tambon Phra Sing, Amphoe Mueang Chiang Mai, Chang Wat Chiang Mai 50200, Thailand",
+                lat = 18.7820297,
+                lng = 98.9889119,
+                cid = "5550218918078233762"
+            )
+        )
+
+        val result = GoogleMapsDisambiguator.disambiguate(urlInfo, candidates)
+        assertNotNull("Kandidat muss ueber CID eindeutig ausgewaehlt werden", result)
+        assertEquals("ChIJJ7Q_mWE72jARcEMQAjiMjLw", result?.id)
+    }
+
+    @Test
+    fun `Thai und Unicode Normalisierung behaelt asiatische Schriftzeichen intakt`() {
+        val urlInfo = UrlInfo(
+            placeName = "โจ๊กหลังมอ ประตูวิศวะ (Congee street food)",
+            address = null,
+            lat = 18.7933,
+            lng = 98.9534,
+            cid = null
+        )
+        val candidates = listOf(
+            Candidate(
+                id = "ChIJJ7Q_mWE72jARcEMQAjiMjLw",
+                name = "โจ๊กหลังมอ ประตูวิศวะ (Congee street food)",
+                address = "Chiang Mai",
+                lat = 18.7932652,
+                lng = 98.9534196
+            ),
+            Candidate(
+                id = "ChIJJUSXkHs62jARid55MJicitw",
+                name = "Ton Payom Congee",
+                address = "Chiang Mai",
+                lat = 18.7902888,
+                lng = 98.9622648
+            )
+        )
+
+        val result = GoogleMapsDisambiguator.disambiguate(urlInfo, candidates)
+        assertNotNull(result)
+        assertEquals("ChIJJ7Q_mWE72jARcEMQAjiMjLw", result?.id)
+    }
 }

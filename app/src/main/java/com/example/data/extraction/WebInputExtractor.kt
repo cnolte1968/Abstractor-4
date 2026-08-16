@@ -1,9 +1,15 @@
 package com.example.data.extraction
 
 import com.example.data.AnalysisType
+import com.example.data.GoogleMapsUrlParser
 import com.example.data.WebpageExtractor
+import com.example.domain.model.CapabilityState
+import com.example.domain.model.CapabilityStatus
 import com.example.domain.model.ContentExtractionResult
 import com.example.domain.model.ExtractedContent
+import com.example.domain.model.SourceCapability
+import com.example.domain.model.SourcePlatform
+import com.example.domain.model.SourceProfile
 import com.example.domain.model.SourceType
 import com.example.domain.model.DomainSummary
 import com.example.domain.model.TakeawayItem
@@ -32,6 +38,28 @@ class WebInputExtractor : InputExtractor {
     ): ContentExtractionResult {
         com.example.data.GatewayDiagnostics.sourceUrl = rawUrl
         com.example.data.GatewayDiagnostics.normalizedSourceUrl = normalizedUrl
+
+        if (isGoogleMapsUrl(rawUrl, normalizedUrl)) {
+            val parsed = GoogleMapsUrlParser.parseGoogleMapsUrl(rawUrl, rawUrl, normalizedUrl, "SUCCESS")
+            val placeTitle = parsed.placeName ?: parsed.searchQuery ?: "Google Maps Ort"
+            val mapsContent = "Google Maps Ortskontext: $placeTitle\nURL: $normalizedUrl"
+            return ContentExtractionResult.Success(
+                ExtractedContent(
+                    sourceType = SourceType.WEB,
+                    rawText = mapsContent,
+                    enrichedText = mapsContent,
+                    metadata = mapOf(
+                        "url" to normalizedUrl,
+                        "placeName" to placeTitle,
+                        "latitude" to (parsed.latitude?.toString() ?: ""),
+                        "longitude" to (parsed.longitude?.toString() ?: ""),
+                        "address" to (parsed.address ?: "")
+                    ),
+                    useSearchGrounding = false,
+                    confirmedProfile = buildConfirmedProfile(rawUrl, normalizedUrl, isSuccess = true)
+                )
+            )
+        }
 
         val socialMediaRegex = Regex(
             ".*(facebook\\.com|instagram\\.com|fb\\.watch|fb\\.com|fb\\.me|instagr\\.am).*",
@@ -75,7 +103,8 @@ class WebInputExtractor : InputExtractor {
                         rawText = scrapedInput.rawText,
                         enrichedText = scrapedInput.enrichedText,
                         metadata = scrapedInput.metadata,
-                        useSearchGrounding = false
+                        useSearchGrounding = false,
+                        confirmedProfile = buildConfirmedProfile(rawUrl, normalizedUrl, isSuccess = true)
                     )
                 )
             } else {
@@ -126,7 +155,8 @@ class WebInputExtractor : InputExtractor {
                             rawText = scrapedInput?.rawText ?: "",
                             enrichedText = scrapedInput?.enrichedText ?: "",
                             metadata = mapOf("url" to normalizedUrl),
-                            useSearchGrounding = true
+                            useSearchGrounding = true,
+                            confirmedProfile = buildConfirmedProfile(rawUrl, normalizedUrl, isSuccess = false, detailMessage = "Direkt-Scraping fehlgeschlagen / Fallback verwendet")
                         )
                     )
                 }
@@ -150,7 +180,8 @@ class WebInputExtractor : InputExtractor {
                         rawText = scrapedInput.rawText,
                         enrichedText = scrapedInput.enrichedText,
                         metadata = scrapedInput.metadata,
-                        useSearchGrounding = false
+                        useSearchGrounding = false,
+                        confirmedProfile = buildConfirmedProfile(rawUrl, normalizedUrl, isSuccess = true)
                     )
                 )
             } else if (isSocial) {
@@ -191,7 +222,8 @@ class WebInputExtractor : InputExtractor {
                         rawText = robustSocialContext,
                         enrichedText = robustSocialContext,
                         metadata = mapOf("url" to normalizedUrl),
-                        useSearchGrounding = false
+                        useSearchGrounding = false,
+                        confirmedProfile = buildSocialConfirmedProfile(rawUrl, normalizedUrl, platformName)
                     )
                 )
             } else {
@@ -205,7 +237,8 @@ class WebInputExtractor : InputExtractor {
                         rawText = scrapedInput?.rawText ?: "",
                         enrichedText = scrapedInput?.enrichedText ?: "",
                         metadata = mapOf("url" to normalizedUrl),
-                        useSearchGrounding = true
+                        useSearchGrounding = true,
+                        confirmedProfile = buildConfirmedProfile(rawUrl, normalizedUrl, isSuccess = false, detailMessage = "Direkt-Scraping fehlgeschlagen / Fallback verwendet")
                     )
                 )
             }
@@ -301,5 +334,92 @@ class WebInputExtractor : InputExtractor {
         }
 
         return ContentExtractionResult.Failure(errorType, message, detail)
+    }
+
+    private fun isGoogleMapsUrl(rawUrl: String, normalizedUrl: String): Boolean {
+        return GoogleMapsUrlParser.isGoogleMapsUrl(rawUrl) ||
+                GoogleMapsUrlParser.isGoogleMapsUrl(normalizedUrl) ||
+                isGoogleMapsUrlPattern(rawUrl) ||
+                isGoogleMapsUrlPattern(normalizedUrl)
+    }
+
+    private fun buildConfirmedProfile(
+        rawUrl: String,
+        normalizedUrl: String,
+        isSuccess: Boolean,
+        detailMessage: String? = null
+    ): SourceProfile {
+        val isMaps = GoogleMapsUrlParser.isGoogleMapsUrl(rawUrl) ||
+                GoogleMapsUrlParser.isGoogleMapsUrl(normalizedUrl) ||
+                isGoogleMapsUrlPattern(rawUrl) ||
+                isGoogleMapsUrlPattern(normalizedUrl)
+
+        return if (isMaps) {
+            SourceProfile(
+                sourceType = SourceProfile.SourceType.PLACE,
+                platform = SourcePlatform.GOOGLE_MAPS,
+                rawInput = rawUrl,
+                normalizedUrl = normalizedUrl,
+                capabilities = mapOf(
+                    SourceCapability.PLACE_CONTEXT to CapabilityState(
+                        capability = SourceCapability.PLACE_CONTEXT,
+                        status = CapabilityStatus.AVAILABLE
+                    )
+                ),
+                isPostFetchConfirmed = true
+            )
+        } else {
+            val status = if (isSuccess) CapabilityStatus.AVAILABLE else CapabilityStatus.FAILED
+            SourceProfile(
+                sourceType = SourceProfile.SourceType.WEB_PAGE,
+                platform = SourcePlatform.WEB,
+                rawInput = rawUrl,
+                normalizedUrl = normalizedUrl,
+                capabilities = mapOf(
+                    SourceCapability.PAGE_ARTICLE_TEXT to CapabilityState(
+                        capability = SourceCapability.PAGE_ARTICLE_TEXT,
+                        status = status,
+                        detailMessage = detailMessage
+                    )
+                ),
+                isPostFetchConfirmed = true
+            )
+        }
+    }
+
+    private fun isGoogleMapsUrlPattern(url: String): Boolean {
+        val lower = url.lowercase()
+        return lower.contains("maps.google.") ||
+                lower.contains("google.com/maps") ||
+                (lower.contains("google.") && lower.contains("/maps")) ||
+                lower.contains("goo.gl/maps") ||
+                lower.contains("maps.app.goo.gl")
+    }
+
+    private fun buildSocialConfirmedProfile(
+        rawUrl: String,
+        normalizedUrl: String,
+        platformName: String
+    ): SourceProfile {
+        val platform = when (platformName.lowercase()) {
+            "instagram" -> SourcePlatform.INSTAGRAM
+            "facebook" -> SourcePlatform.FACEBOOK
+            "tiktok" -> SourcePlatform.TIKTOK
+            else -> SourcePlatform.WEB
+        }
+        return SourceProfile(
+            sourceType = SourceProfile.SourceType.WEB_PAGE,
+            platform = platform,
+            rawInput = rawUrl,
+            normalizedUrl = normalizedUrl,
+            capabilities = mapOf(
+                SourceCapability.PAGE_ARTICLE_TEXT to CapabilityState(
+                    capability = SourceCapability.PAGE_ARTICLE_TEXT,
+                    status = CapabilityStatus.UNAVAILABLE,
+                    detailMessage = "Geschützter Inhalt hinter Login-Schranke ($platformName)"
+                )
+            ),
+            isPostFetchConfirmed = true
+        )
     }
 }

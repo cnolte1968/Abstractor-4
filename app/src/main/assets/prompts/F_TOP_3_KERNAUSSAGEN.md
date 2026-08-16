@@ -1,3 +1,15 @@
+# SYSTEM-PROMPT: TOP_3_KERNAUSSAGEN
+
+## Prompt Metadata
+- Function Key: TOP_3_KERNAUSSAGEN
+- Prompt Version: 2.0
+- Status: PROD
+- Created: UNKNOWN
+- Metadata Added: 2026-08-11
+- Last Modified: 2026-08-11
+- Change Process: CP-01
+- Output Contract: DomainSummary
+
 # RELEVANTOR – FUNKTIONSPROMPT: TOP_3_KERNAUSSAGEN (v2.0 CLEAN)
 
 ## 1. FUNKTION

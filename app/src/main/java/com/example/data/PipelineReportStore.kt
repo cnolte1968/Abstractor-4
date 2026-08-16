@@ -9,7 +9,7 @@ object PipelineReportStore {
     private val timeFormat = SimpleDateFormat("yyyy-MM-dd HH:mm:ss.SSS", Locale.getDefault())
 
     @Synchronized
-    fun startNewReport(sourceTrigger: String, isSmokeTest: Boolean = false, testId: String = ""): PipelineReport {
+    fun startNewReport(sourceTrigger: String, isSmokeTest: Boolean = false, testId: String = "", runIteration: Int = 1): PipelineReport {
         val report = PipelineReport()
         val nowStr = timeFormat.format(Date())
         val runId = java.util.UUID.randomUUID().toString()
@@ -19,6 +19,9 @@ object PipelineReportStore {
         report.metadata["correlationId"] = runId
         report.metadata["sourceTrigger"] = sourceTrigger
         report.metadata["isSmokeTest"] = isSmokeTest
+        report.metadata["runIteration"] = runIteration
+        report.final_result["runIteration"] = runIteration
+        report.final_result["stabilityStatus"] = "UNKNOWN"
         if (isSmokeTest) {
             report.metadata["testId"] = testId
             report.metadata["isManualRun"] = false
@@ -85,6 +88,7 @@ object PipelineReportStore {
             "user_actions" -> update(report.user_actions)
             "final_result" -> update(report.final_result)
             "location_context" -> update(report.location_context)
+            "google_maps_analysis" -> update(report.google_maps_analysis)
         }
     }
 
@@ -741,9 +745,24 @@ object PipelineReportStore {
                                       (SummaryResponseParser.lastReport != null && 
                                        SummaryResponseParser.lastReport?.parserFailureReason?.contains("TRANSCRIPT_UNAVAILABLE") == true)
         
+        val isInsufficient = currentStatus == "INSUFFICIENT_CONTENT" ||
+                             GatewayDiagnostics.exceptionMessage.contains("INSUFFICIENT_CONTENT") ||
+                             (firstFailingStep != null && (firstFailingStep.exceptionMessage.contains("INSUFFICIENT_CONTENT") || firstFailingStep.notes.contains("INSUFFICIENT_CONTENT")))
+
         if (isTranscriptUnavailable) {
             report.final_result["finalStatus"] = "DEGRADED"
+            report.final_result["technicalStatus"] = "PASS"
+            report.final_result["functionalStatus"] = "DEGRADED"
             report.final_result["technicalErrorCategory"] = "TRANSCRIPT_UNAVAILABLE"
+            report.final_result["semanticOutcomeReason"] = "Transcript unavailable, degraded metadata used"
+            report.final_result["pipelineCompleted"] = true
+            report.final_result["failureStage"] = "NONE"
+            report.final_result["failureStepId"] = ""
+        } else if (isInsufficient) {
+            report.final_result["finalStatus"] = "INSUFFICIENT_CONTENT"
+            report.final_result["technicalStatus"] = "PASS"
+            report.final_result["functionalStatus"] = "INSUFFICIENT_CONTENT"
+            report.final_result["semanticOutcomeReason"] = "Source content was insufficient for structured summary"
             report.final_result["pipelineCompleted"] = true
             report.final_result["failureStage"] = "NONE"
             report.final_result["failureStepId"] = ""
@@ -765,19 +784,57 @@ object PipelineReportStore {
             report.final_result["userVisibleErrorTitle"] = "Fehler in Stufe: ${firstFailingStep.stepName}"
             report.final_result["userVisibleErrorMessage"] = firstFailingStep.exceptionMessage.ifEmpty { firstFailingStep.notes }
             report.final_result["pipelineCompleted"] = false
+
+            // Status model logic:
+            val isGeminiSuccess = GatewayDiagnostics.rawGeminiResponseLength > 0 || report.steps.find { it.stepId == "gemini_response" }?.status == "PASS"
+            val isParserOrContractFailure = firstFailingStep.stepId == "parsing" || firstFailingStep.stepId == "contract_validation" || firstFailingStep.stepId == "response_normalization"
+
+            if (isGeminiSuccess && isParserOrContractFailure) {
+                report.final_result["technicalStatus"] = "PASS"
+                report.final_result["functionalStatus"] = "FAIL"
+                val rejReason = GatewayDiagnostics.parserFailureReason.ifEmpty { firstFailingStep.exceptionMessage.ifEmpty { "STRUCTURED_EXTRACTION_FAILED" } }
+                report.final_result["parserStrictRejectionReason"] = rejReason
+                report.final_result["semanticOutcomeReason"] = "Gemini API call succeeded technically (HTTP 200), but parser or contract validation failed: $rejReason"
+            } else {
+                report.final_result["technicalStatus"] = "FAIL"
+                report.final_result["functionalStatus"] = "FAIL"
+                report.final_result["semanticOutcomeReason"] = firstFailingStep.exceptionMessage.ifEmpty { firstFailingStep.notes.ifEmpty { "Step ${firstFailingStep.stepName} failed" } }
+            }
         } else {
             val isSuccess = report.steps.any { it.status == "PASS" }
-            if (isSuccess && renderingStep?.status == "PASS") {
+            if (isSuccess && (renderingStep?.status == "PASS" || currentStatus == "PASS" || currentStatus == "SUCCESS")) {
                 report.final_result["finalStatus"] = "PASS"
+                report.final_result["technicalStatus"] = "PASS"
+                report.final_result["functionalStatus"] = "PASS"
+                report.final_result["semanticOutcomeReason"] = "Pipeline completed successfully with full structure"
                 report.final_result["pipelineCompleted"] = true
                 report.final_result["failureStage"] = "NONE"
                 report.final_result["failureStepId"] = ""
             } else {
                 report.final_result["finalStatus"] = "NOT_RUN"
+                report.final_result["technicalStatus"] = "NOT_RUN"
+                report.final_result["functionalStatus"] = "NOT_RUN"
                 report.final_result["pipelineCompleted"] = false
                 report.final_result["failureStage"] = "NONE"
                 report.final_result["failureStepId"] = ""
             }
+        }
+
+        // Set stabilityStatus initial UNKNOWN if not set
+        if (report.final_result["stabilityStatus"] == null || report.final_result["stabilityStatus"] == "") {
+            report.final_result["stabilityStatus"] = "UNKNOWN"
+        }
+
+        // Set diagnostic fields
+        report.final_result["runIteration"] = (report.metadata["runIteration"] as? Int) ?: (report.final_result["runIteration"] as? Int) ?: 1
+        val reqPayload = GatewayDiagnostics.rawGeminiResponseSha256.ifEmpty {
+            (report.gemini_response["rawGeminiResponseSha256"] as? String) ?: ""
+        }
+        report.final_result["payloadInputHash"] = reqPayload
+        report.final_result["externalCandidateCount"] = (report.google_maps_analysis["disambiguatorCandidateCount"] as? Int)
+            ?: (report.final_result["externalCandidateCount"] as? Int) ?: 0
+        if ((report.final_result["parserStrictRejectionReason"] as? String).isNullOrEmpty()) {
+            report.final_result["parserStrictRejectionReason"] = GatewayDiagnostics.parserFailureReason
         }
 
         // --- 16. Self-Correction, nextStep and summaries on Steps ---
@@ -911,5 +968,100 @@ object PipelineReportStore {
             return "{\n  \"status\": \"NO_PIPELINE_REPORT_AVAILABLE\"\n}"
         }
         return com.example.data.diagnostics.ReportSanitizer.buildAndSanitizeReport(report, contributors)
+    }
+
+    @Synchronized
+    fun getFormattedDiagnosticReport(): String {
+        val report = lastReport ?: return "Kein Report verfügbar."
+        
+        val json = getLastReportJson()
+        
+        val isSmokeTest = report.metadata["isSmokeTest"] as? Boolean ?: false
+        val reportName = if (isSmokeTest) "Automated Smoke Test Pipeline" else "Diagnose Report"
+        
+        val url = report.input_intake["rawInput"] as? String 
+            ?: report.url_normalization["rawUrl"] as? String 
+            ?: "N/A"
+            
+        val timestamp = report.metadata["timestamp"] as? String ?: "N/A"
+        val runId = report.metadata["runId"] as? String ?: "N/A"
+        val functionId = report.feature_routing["selectedFunctionId"] as? String ?: "N/A"
+        val analysisType = report.notation_and_id_resolution["canonicalAnalysisType"] as? String ?: "N/A"
+        val sourceType = report.metadata["sourceTrigger"] as? String ?: "N/A"
+        
+        val pipelineCompleted = report.final_result["pipelineCompleted"] as? Boolean ?: false
+        val finalStatus = report.final_result["finalStatus"] as? String ?: "NOT_RUN"
+        val techStatus = report.final_result["technicalStatus"] as? String 
+            ?: (if (pipelineCompleted || finalStatus == "SUCCESS" || finalStatus == "PASS") "PASS" else "FAIL")
+        val funcStatus = report.final_result["functionalStatus"] as? String ?: finalStatus
+        val stabStatus = report.final_result["stabilityStatus"] as? String ?: "UNKNOWN"
+        val runIteration = (report.metadata["runIteration"] as? Int) ?: 1
+        
+        val failureStage = report.final_result["failureStage"] as? String ?: ""
+        val errorMsg = report.final_result["userVisibleErrorMessage"] as? String ?: ""
+        val semanticReason = report.final_result["semanticOutcomeReason"] as? String ?: ""
+        
+        val failureReason = if (funcStatus != "PASS" && funcStatus != "SUCCESS") {
+            if (semanticReason.isNotEmpty()) semanticReason else if (errorMsg.isNotEmpty()) errorMsg else if (failureStage.isNotEmpty()) failureStage else "Unbekannter Fehler"
+        } else {
+            "Keine Fehler"
+        }
+        
+        val lastSuccessfulStep = report.steps.lastOrNull { it.status == "PASS" }?.stepName ?: "N/A"
+        
+        val header = """
+            # Report: $reportName
+
+            URL:
+            $url
+
+            Zeit:
+            $timestamp
+
+            Funktion:
+            $functionId
+
+            Status:
+            $funcStatus
+
+            Run-ID:
+            $runId
+
+            Iteration:
+            $runIteration
+
+            SourceType:
+            $sourceType
+
+            AnalysisType:
+            $analysisType
+
+            Fehlerstufe:
+            ${if (failureStage.isNotEmpty()) failureStage else "N/A"}
+
+            Letzter erfolgreicher Schritt:
+            $lastSuccessfulStep
+
+            ---
+
+            Technischer Status:
+            $techStatus
+
+            Funktionaler Status:
+            $funcStatus
+
+            Stabilitätsstatus:
+            $stabStatus
+
+            Grund / Semantik:
+            $failureReason
+
+            --------------------------------------------------
+            JSON Report Details
+            --------------------------------------------------
+            
+        """.trimIndent()
+        
+        return header + "\n" + json
     }
 }

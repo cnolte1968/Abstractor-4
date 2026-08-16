@@ -11,9 +11,53 @@ data class SystemStatusResult(
     val message: String
 )
 
+data class EdgeFunctionStatusResult(
+    val isReachable: Boolean,
+    val httpCode: Int? = null,
+    val status: String? = null,
+    val version: String? = null,
+    val message: String
+)
+
 class SupabaseSystemStatusChecker(
     private val apiService: SupabaseApiService = SupabaseApiService.create()
 ) {
+    suspend fun checkEdgeFunctionStatus(): EdgeFunctionStatusResult {
+        return try {
+            val response = apiService.checkEdgeFunctionHealth()
+            if (response.isSuccessful) {
+                val dto = response.body()
+                if (dto != null) {
+                    EdgeFunctionStatusResult(
+                        isReachable = true,
+                        httpCode = response.code(),
+                        status = dto.status,
+                        version = dto.version,
+                        message = "PASS (status=${dto.status}, message=${dto.message}, version=${dto.version})"
+                    )
+                } else {
+                    EdgeFunctionStatusResult(
+                        isReachable = true,
+                        httpCode = response.code(),
+                        message = "FAIL (Empty response body)"
+                    )
+                }
+            } else {
+                EdgeFunctionStatusResult(
+                    isReachable = false,
+                    httpCode = response.code(),
+                    message = "HTTP ${response.code()}"
+                )
+            }
+        } catch (e: Exception) {
+            Log.w("SupabaseStatusCheck", "Error checking edge function: ${e.message}")
+            EdgeFunctionStatusResult(
+                isReachable = false,
+                message = "Exception: ${e.message}"
+            )
+        }
+    }
+
     suspend fun checkStatus(): SystemStatusResult {
         return try {
             val response = apiService.getSystemStatus()

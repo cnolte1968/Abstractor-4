@@ -16,6 +16,7 @@ class PipelineReport {
         "testId" to "",
         "isSmokeTest" to false,
         "isManualRun" to true,
+        "runIteration" to 1,
         "sourceTrigger" to "MANUAL_URL",
         "currentScreen" to "START",
         "buildVariant" to "debug"
@@ -298,6 +299,14 @@ class PipelineReport {
 
     val final_result = mutableMapOf<String, Any?>(
         "finalStatus" to "NOT_RUN",
+        "technicalStatus" to "NOT_RUN",
+        "functionalStatus" to "NOT_RUN",
+        "stabilityStatus" to "UNKNOWN",
+        "runIteration" to 1,
+        "payloadInputHash" to "",
+        "externalCandidateCount" to 0,
+        "parserStrictRejectionReason" to "",
+        "semanticOutcomeReason" to "",
         "failureStage" to "",
         "failureStepId" to "",
         "userVisibleErrorTitle" to "",
@@ -320,6 +329,38 @@ class PipelineReport {
         "fallbackUsed" to false,
         "generatedContextSections" to listOf<String>(),
         "noContextFound" to false
+    )
+
+    val google_maps_analysis = mutableMapOf<String, Any?>(
+        "shortLinkOriginalUrl" to "",
+        "shortLinkUrlType" to "",
+        "shortLinkRedirectAttempts" to 0,
+        "shortLinkHttpStatusPerRedirect" to "",
+        "shortLinkLocationHeader" to "",
+        "shortLinkFinalUrl" to "",
+        "extractedLocationTitle" to "",
+        "extractedAddress" to "",
+        "extractedPlusCode" to "",
+        "extractedPlaceId" to "",
+        "extractedCid" to "",
+        "extractedLatitude" to "",
+        "extractedLongitude" to "",
+        "parserPlaceId" to "",
+        "parserLat" to "",
+        "parserLng" to "",
+        "parserPlaceName" to "",
+        "parserAddress" to "",
+        "parserPlusCode" to "",
+        "parserSearchQuery" to "",
+        "placesApiMode" to "",
+        "placesApiQuery" to "",
+        "placesApiPlaceId" to "",
+        "placesApiLocationBias" to "",
+        "disambiguatorCandidateCount" to 0,
+        "disambiguatorCandidateNames" to "",
+        "disambiguatorCandidatePlaceIds" to "",
+        "disambiguatorCandidateCoordinates" to "",
+        "disambiguatorScoringInput" to ""
     )
 
     val steps = mutableListOf<PipelineStep>()
@@ -346,6 +387,8 @@ class PipelineReport {
         root.put("rendering", JSONObject(rendering))
         root.put("user_actions", JSONObject(user_actions))
         root.put("final_result", JSONObject(final_result))
+        root.put("location_context", JSONObject(location_context))
+        root.put("google_maps_analysis", JSONObject(google_maps_analysis))
 
         val stepsArray = JSONArray()
         for (step in steps) {

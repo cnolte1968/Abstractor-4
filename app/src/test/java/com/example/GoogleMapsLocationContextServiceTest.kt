@@ -582,6 +582,144 @@ class GoogleMapsLocationContextServiceTest {
         assertEquals(153.0234, capturedInput!!.longitude!!, 0.0001)
     }
 
+    @Test
+    fun testWatPhraThatDoiSuthepWebInputExtractorExtraction() = runTest {
+        val extractor = com.example.data.extraction.WebInputExtractor()
+        val testUrl = "https://maps.google.com/?q=Wat+Phra+That+Doi+Suthep"
+        val result = extractor.extract(
+            rawUrl = testUrl,
+            normalizedUrl = testUrl,
+            directContent = null,
+            analysisType = AnalysisType.GOOGLE_MAPS_LOCATION_CONTEXT,
+            freeQuery = null,
+            analysisId = "test_extraction_1"
+        )
+
+        assertTrue(result is com.example.domain.model.ContentExtractionResult.Success)
+        val success = result as com.example.domain.model.ContentExtractionResult.Success
+        assertEquals("Wat Phra That Doi Suthep", success.content.metadata["placeName"])
+        assertTrue(success.content.rawText.contains("Wat Phra That Doi Suthep"))
+    }
+
+    @Test
+    fun testWatPhraThatDoiSuthepLocationContextPipelineReportDiagnostics() = runTest {
+        val wikiFetcher: suspend (String) -> String = { _ ->
+            """
+                {
+                  "query": {
+                    "search": [{ "title": "Wat Phra That Doi Suthep" }],
+                    "pages": { "100": { "title": "Wat Phra That Doi Suthep", "extract": "Wat Phra That Doi Suthep ist ein buddhistischer Tempel in Chiang Mai." } }
+                  }
+                }
+            """.trimIndent()
+        }
+        val voyageFetcher: suspend (String) -> String = { _ ->
+            """
+                {
+                  "query": {
+                    "search": [{ "title": "Wat Phra That Doi Suthep" }],
+                    "pages": { "200": { "title": "Wat Phra That Doi Suthep", "extract": "Doi Suthep Reiseführer: 309 Stufen der Naga-Treppe." } }
+                  }
+                }
+            """.trimIndent()
+        }
+
+        val wikiSource = WikipediaContextSource(networkFetcher = wikiFetcher)
+        val voyageSource = WikivoyageContextSource(networkFetcher = voyageFetcher)
+        val mapsBaseSource = com.example.data.contextengine.GoogleMapsBaseContextSource()
+        val customEngine = ContextEngine(listOf(wikiSource, voyageSource, mapsBaseSource))
+        val service = GoogleMapsLocationContextService(customEngine)
+
+        val input = LocationContextInput(
+            placeName = "Wat Phra That Doi Suthep",
+            rawUrl = "https://maps.google.com/?q=Wat+Phra+That+Doi+Suthep"
+        )
+
+        com.example.data.PipelineReportStore.startNewReport("TEST")
+        val formatted = service.fetchLocationContext(input)
+
+        assertTrue(formatted.contains("=== FAKTEN ==="))
+        assertTrue(formatted.contains("Wat Phra That Doi Suthep ist ein buddhistischer Tempel"))
+        assertTrue(formatted.contains("=== REISEKONTEXT ==="))
+        assertTrue(formatted.contains("Naga-Treppe"))
+        assertTrue(formatted.contains("=== GOOGLE MAPS BASISDATEN ==="))
+        assertTrue(formatted.contains("Ort: Wat Phra That Doi Suthep"))
+
+        val report = com.example.data.PipelineReportStore.getReport()
+        assertTrue(report != null)
+        assertEquals("SUCCESS", report!!.location_context["parserStatus"])
+        assertEquals("SUCCESS", report!!.location_context["wikipediaStatus"])
+        assertEquals("SUCCESS", report!!.location_context["wikivoyageStatus"])
+        assertEquals("SUCCESS", report!!.location_context["googleMapsBaseStatus"])
+        val sections = report!!.location_context["generatedContextSections"] as? List<*>
+        assertTrue(sections != null && sections.contains("FAKTEN"))
+        assertTrue(sections != null && sections.contains("REISEKONTEXT"))
+        assertTrue(sections != null && sections.contains("GOOGLE_MAPS_BASISDATEN"))
+    }
+
+    @Test
+    fun testDifficultCaseParentLocationFallbackChiangMai() = runTest {
+        val wikiFetcher: suspend (String) -> String = { url ->
+            when {
+                url.contains("Chiang+Mai") || url.contains("Chiang_Mai") -> """
+                    {
+                      "query": {
+                        "search": [{ "title": "Chiang Mai" }],
+                        "pages": { "100": { "title": "Chiang Mai", "extract": "Chiang Mai ist die größte und kulturhistorisch bedeutsamste Stadt in Nordthailand." } }
+                      }
+                    }
+                """.trimIndent()
+                else -> """{ "query": { "search": [] } }"""
+            }
+        }
+        val voyageFetcher: suspend (String) -> String = { url ->
+            when {
+                url.contains("Chiang+Mai") || url.contains("Chiang_Mai") -> """
+                    {
+                      "query": {
+                        "search": [{ "title": "Chiang Mai" }],
+                        "pages": { "200": { "title": "Chiang Mai", "extract": "Chiang Mai Reiseführer: Bekannt für Nachtmärkte und Tempel." } }
+                      }
+                    }
+                """.trimIndent()
+                else -> """{ "query": { "search": [] } }"""
+            }
+        }
+
+        val wikiSource = WikipediaContextSource(networkFetcher = wikiFetcher)
+        val voyageSource = WikivoyageContextSource(networkFetcher = voyageFetcher)
+        val mapsBaseSource = com.example.data.contextengine.GoogleMapsBaseContextSource()
+        val customEngine = ContextEngine(listOf(wikiSource, voyageSource, mapsBaseSource))
+        val service = GoogleMapsLocationContextService(customEngine)
+
+        val input = LocationContextInput(
+            placeName = "QXV3+893 โจ๊กหลังมอ ประตูวิศวะ (Congee street food), Tambon Su Thep, Amphoe Mueang Chiang Mai, Chang Wat Chiang Mai 50200",
+            rawUrl = "https://maps.app.goo.gl/WgXTvya1yCDJjameA"
+        )
+
+        com.example.data.PipelineReportStore.startNewReport("TEST_DIFF")
+        val formatted = service.fetchLocationContext(input)
+
+        assertTrue(formatted.contains("=== FAKTEN ==="))
+        assertTrue(formatted.contains("Umfeld- und Ortskontext (Chiang Mai)"))
+        assertTrue(formatted.contains("Chiang Mai ist die größte und kulturhistorisch bedeutsamste Stadt in Nordthailand."))
+        assertTrue(formatted.contains("=== REISEKONTEXT ==="))
+        assertTrue(formatted.contains("Chiang Mai Reiseführer"))
+        assertTrue(formatted.contains("=== GOOGLE MAPS BASISDATEN ==="))
+        assertTrue(formatted.contains("Ort: QXV3+893 โจ๊กหลังมอ"))
+
+        val report = com.example.data.PipelineReportStore.getReport()
+        assertTrue(report != null)
+        assertEquals("SUCCESS", report!!.location_context["parserStatus"])
+        assertEquals("SUCCESS", report!!.location_context["wikipediaStatus"])
+        assertEquals("SUCCESS", report!!.location_context["wikivoyageStatus"])
+        assertEquals("SUCCESS", report!!.location_context["googleMapsBaseStatus"])
+        val sections = report!!.location_context["generatedContextSections"] as? List<*>
+        assertTrue(sections != null && sections.contains("FAKTEN"))
+        assertTrue(sections != null && sections.contains("REISEKONTEXT"))
+        assertTrue(sections != null && sections.contains("GOOGLE_MAPS_BASISDATEN"))
+    }
+
     private fun assertFalse(value: Boolean) {
         org.junit.Assert.assertFalse(value)
     }

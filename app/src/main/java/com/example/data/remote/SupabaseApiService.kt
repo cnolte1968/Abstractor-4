@@ -20,11 +20,20 @@ data class SystemStatusDto(
     @Json(name = "updated_at") val updatedAt: String? = null
 )
 
+data class EdgeFunctionHealthDto(
+    @Json(name = "status") val status: String? = null,
+    @Json(name = "message") val message: String? = null,
+    @Json(name = "version") val version: String? = null
+)
+
 interface SupabaseApiService {
     @GET("rest/v1/system_status")
     suspend fun getSystemStatus(
         @Query("select") select: String = "*"
     ): Response<List<SystemStatusDto>>
+
+    @GET("functions/v1/health-check")
+    suspend fun checkEdgeFunctionHealth(): Response<EdgeFunctionHealthDto>
 
     companion object {
         fun create(

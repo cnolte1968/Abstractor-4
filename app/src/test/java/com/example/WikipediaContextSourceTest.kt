@@ -59,8 +59,8 @@ class WikipediaContextSourceTest {
 
         assertTrue(result.isSuccessful)
         assertEquals("WIKIPEDIA", result.sourceName)
-        assertEquals("Das Brandenburger Tor in Berlin ist ein frühklassizistisches Triumphtor.", result.snippet)
-        assertEquals("MATCHED", result.metadata["status"])
+        assertEquals("Umfeld- und Ortskontext (Brandenburger Tor):\nDas Brandenburger Tor in Berlin ist ein frühklassizistisches Triumphtor.", result.snippet)
+        assertEquals("PARENT_LOCATION_MATCH", result.metadata["status"])
         assertEquals("Brandenburger Tor", result.metadata["wikiTitle"])
     }
 
@@ -102,7 +102,7 @@ class WikipediaContextSourceTest {
         val result = source.fetchContext(input)
 
         assertTrue(result.isSuccessful)
-        assertEquals("Der Kölner Dom ist eine der bedeutendsten Kathedralen Europas.", result.snippet)
+        assertEquals("Umfeld- und Ortskontext (Kölner Dom):\nDer Kölner Dom ist eine der bedeutendsten Kathedralen Europas.", result.snippet)
         assertEquals("Kölner Dom", result.metadata["wikiTitle"])
     }
 
@@ -169,7 +169,7 @@ class WikipediaContextSourceTest {
         assertEquals(1, results.size)
         val res = results[0]
         assertTrue(res.isSuccessful)
-        assertEquals("Der Alexanderplatz ist ein zentraler Platz in Berlin.", res.snippet)
+        assertEquals("Umfeld- und Ortskontext (Alexanderplatz):\nDer Alexanderplatz ist ein zentraler Platz in Berlin.", res.snippet)
     }
 
     @Test

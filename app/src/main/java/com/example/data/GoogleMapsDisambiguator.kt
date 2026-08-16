@@ -7,7 +7,8 @@ object GoogleMapsDisambiguator {
         val address: String?,
         val lat: Double?,
         val lng: Double?,
-        val placeId: String? = null
+        val placeId: String? = null,
+        val cid: String? = null
     )
 
     data class Candidate(
@@ -15,7 +16,8 @@ object GoogleMapsDisambiguator {
         val name: String,
         val address: String? = null,
         val lat: Double? = null,
-        val lng: Double? = null
+        val lng: Double? = null,
+        val cid: String? = null
     )
 
     fun disambiguate(urlInfo: UrlInfo, candidates: List<Candidate>): Candidate? {
@@ -25,6 +27,12 @@ object GoogleMapsDisambiguator {
         if (urlInfo.placeId != null) {
             val exactMatch = candidates.find { it.id == urlInfo.placeId }
             if (exactMatch != null) return exactMatch
+        }
+
+        // 1b. CID Exact Match
+        if (!urlInfo.cid.isNullOrBlank()) {
+            val cidMatch = candidates.find { !it.cid.isNullOrBlank() && it.cid == urlInfo.cid }
+            if (cidMatch != null) return cidMatch
         }
 
         // 2. Exact Name Match Priority
@@ -57,8 +65,8 @@ object GoogleMapsDisambiguator {
         // Mindestkriterium: mind. 30 Punkte
         if (best.second < 30.0) return null
 
-        // Klare Bewertungsdifferenz (Margin of Victory): mind. 15 Punkte Abstand zum Zweitbesten
-        if (best.second - second.second < 15.0) return null
+        // Bei vernachlässigbarer Differenz (Gleichstand oder nahezu identischer Score < 5.0 Punkte): Echte Ambivalenz
+        if (best.second - second.second < 5.0) return null
 
         return best.first
     }
@@ -126,7 +134,7 @@ object GoogleMapsDisambiguator {
 
     private fun normalize(text: String): String {
         return text.lowercase(java.util.Locale.ROOT)
-            .replace(Regex("[^a-z0-9äöüß ]"), "")
+            .replace(Regex("[^\\p{L}\\p{M}\\p{N} ]"), "")
             .trim()
     }
 

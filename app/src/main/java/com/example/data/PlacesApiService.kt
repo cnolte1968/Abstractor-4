@@ -44,7 +44,9 @@ data class PlaceIdName(
     val id: String,
     val name: String,
     val formattedAddress: String? = null,
-    val location: LatLng? = null
+    val location: LatLng? = null,
+    val googleMapsUri: String? = null,
+    val displayName: LocalizedText? = null
 )
 
 @JsonClass(generateAdapter = true)
@@ -243,6 +245,10 @@ object PlacesApiService {
             resolutionMethod = "DIRECT_PLACE_ID"
             matchStatus = "EXACT"
             Log.i(TAG, "Direkte Place-ID aus URL gefunden: $currentPlaceId")
+            com.example.data.PipelineReportStore.updateSection("google_maps_analysis") { map ->
+                map["placesApiMode"] = "PLACE_DETAILS"
+                map["placesApiPlaceId"] = currentPlaceId
+            }
         } else {
             // No Place-ID in URL, need Text Search (New)
             val queryText = buildQueryText(mapsResult)
@@ -271,16 +277,24 @@ object PlacesApiService {
             }
 
             Log.i(TAG, "Starte Text-Search-Auflösung für Query: '$queryText'")
+            val locationBiasVar = if (mapsResult.latitude != null && mapsResult.longitude != null) {
+                LocationBias(
+                    circle = CircleBias(
+                        center = LatLng(mapsResult.latitude, mapsResult.longitude),
+                        radius = 1000.0
+                    )
+                )
+            } else null
+
+            com.example.data.PipelineReportStore.updateSection("google_maps_analysis") { map ->
+                map["placesApiMode"] = "TEXT_SEARCH"
+                map["placesApiQuery"] = queryText
+                map["placesApiLocationBias"] = if (locationBiasVar != null) "${locationBiasVar.circle?.center?.latitude}, ${locationBiasVar.circle?.center?.longitude}" else "null"
+            }
+
             val searchRequest = TextSearchRequest(
                 textQuery = queryText,
-                locationBias = if (mapsResult.latitude != null && mapsResult.longitude != null) {
-                    LocationBias(
-                        circle = CircleBias(
-                            center = LatLng(mapsResult.latitude, mapsResult.longitude),
-                            radius = 1000.0
-                        )
-                    )
-                } else null
+                locationBias = locationBiasVar
             )
 
             try {
@@ -297,22 +311,61 @@ object PlacesApiService {
                         matchStatus = "EXACT"
                         Log.i(TAG, "Eindeutiger Treffer gefunden: $currentPlaceId")
                     } else {
+                        var finalLat = mapsResult.latitude
+                        var finalLng = mapsResult.longitude
+                        
+                        if (mapsResult.plusCode != null) {
+                            try {
+                                val olc = com.google.openlocationcode.OpenLocationCode(mapsResult.plusCode)
+                                if (olc.isFull) {
+                                    val decoded = olc.decode()
+                                    finalLat = decoded.centerLatitude
+                                    finalLng = decoded.centerLongitude
+                                } else if (olc.isShort && places.isNotEmpty()) {
+                                    val refLat = places[0].location?.latitude
+                                    val refLng = places[0].location?.longitude
+                                    if (refLat != null && refLng != null) {
+                                        val recovered = olc.recover(refLat, refLng)
+                                        val decodedRecovered = recovered.decode()
+                                        finalLat = decodedRecovered.centerLatitude
+                                        finalLng = decodedRecovered.centerLongitude
+                                    }
+                                }
+                            } catch (e: Exception) {
+                                Log.w(TAG, "Error decoding Plus Code: ${mapsResult.plusCode}", e)
+                            }
+                        }
+
                         val urlInfo = GoogleMapsDisambiguator.UrlInfo(
                             placeName = mapsResult.placeName,
                             address = mapsResult.address,
-                            lat = mapsResult.latitude,
-                            lng = mapsResult.longitude,
-                            placeId = mapsResult.placeId
+                            lat = finalLat,
+                            lng = finalLng,
+                            placeId = mapsResult.placeId,
+                            cid = mapsResult.cid
                         )
                         val candidates = places.map { place ->
+                            val candidateCid = place.googleMapsUri?.let { uri ->
+                                Regex("[?&]cid=(\\d+)").find(uri)?.groupValues?.get(1)
+                            }
                             GoogleMapsDisambiguator.Candidate(
                                 id = place.id,
-                                name = place.name,
+                                name = place.displayName?.text ?: place.name,
                                 address = place.formattedAddress,
                                 lat = place.location?.latitude,
-                                lng = place.location?.longitude
+                                lng = place.location?.longitude,
+                                cid = candidateCid
                             )
                         }
+
+                        com.example.data.PipelineReportStore.updateSection("google_maps_analysis") { map ->
+                            map["disambiguatorCandidateCount"] = candidates.size
+                            map["disambiguatorCandidateNames"] = candidates.joinToString(", ") { it.name ?: "Unknown" }
+                            map["disambiguatorCandidatePlaceIds"] = candidates.joinToString(", ") { it.id }
+                            map["disambiguatorCandidateCoordinates"] = candidates.joinToString(", ") { "${it.lat ?: "null"},${it.lng ?: "null"}" }
+                            map["disambiguatorScoringInput"] = "urlInfo: lat=${urlInfo.lat}, lng=${urlInfo.lng}, name=${urlInfo.placeName}"
+                        }
+
                         val bestMatch = GoogleMapsDisambiguator.disambiguate(urlInfo, candidates)
                         
                         if (bestMatch != null) {
@@ -482,7 +535,7 @@ object PlacesApiService {
             .url("https://places.googleapis.com/v1/places:searchText")
             .post(requestBody)
             .header("X-Goog-Api-Key", apiKey)
-            .header("X-Goog-FieldMask", "places.id,places.name,places.formattedAddress,places.location")
+            .header("X-Goog-FieldMask", "places.id,places.name,places.formattedAddress,places.location,places.googleMapsUri,places.displayName")
             .header("Content-Type", "application/json")
             .build()
 

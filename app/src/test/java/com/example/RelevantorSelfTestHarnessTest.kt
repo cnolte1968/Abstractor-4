@@ -1788,6 +1788,56 @@ class RelevantorSelfTestHarnessTest {
         assertTrue("All active features must be fully onboarded and GRÜN", allFeaturesGreen)
     }
 
+    /**
+     * Test: selfTest_GOOGLE_MAPS_LOCATION_QUERY_passesFullPipeline
+     */
+    @Test
+    fun selfTest_GOOGLE_MAPS_LOCATION_QUERY_passesFullPipeline() = runBlocking {
+        // Load A.1 Golden Artifacts
+        val inputHtml = loadTestAsset("golden/GOOGLE_MAPS_LOCATION_QUERY/input.html")
+        val inputUrl = loadTestAsset("golden/GOOGLE_MAPS_LOCATION_QUERY/input_url.txt").trim()
+        val geminiResponse = loadTestAsset("golden/GOOGLE_MAPS_LOCATION_QUERY/gemini_response.json")
+        val expectedOutputJson = loadTestAsset("golden/GOOGLE_MAPS_LOCATION_QUERY/expected_domain_summary.json")
+
+        // 1. Simulate HTML / Text Extraction
+        val textLength = inputHtml.length
+        assertTrue("GOOGLE_MAPS_LOCATION_QUERY input.html must be loaded and non-empty", textLength > 0)
+
+        // 2. Setup mock response
+        fakeGateway.rawResponseText = geminiResponse
+
+        // 3. Resolve from Registry
+        val engine = registry.getEngine("GOOGLE_MAPS_LOCATION_QUERY")
+        assertNotNull("Engine GOOGLE_MAPS_LOCATION_QUERY must be registered in AnalysisRegistry", engine)
+
+        // 4. Validate Prompt Integrity
+        val promptText = filePromptLoader.loadAsset(engine!!.contract.promptPath)
+        val promptHash = promptText.sha256()
+        assertFalse("GOOGLE_MAPS_LOCATION_QUERY system prompt must not be blank", promptText.isBlank())
+
+        // 5. Construct input payload
+        val analysisId = UUID.randomUUID().toString()
+        val input = CanonicalAnalysisInput(
+            sourceType = SourceType.WEB,
+            rawText = inputHtml,
+            enrichedText = inputHtml,
+            metadata = mapOf("url" to inputUrl),
+            analysisId = analysisId,
+            analysisType = AnalysisType.GOOGLE_MAPS_LOCATION_QUERY
+        )
+
+        // 6. Execute pipeline
+        val summary = engine.analyze(input)
+
+        // 7. Verify contract
+        engine.contract.validateOutput(summary)
+
+        // 8. Save and verify storage
+        fakeRepository.saveAnalysis(summary)
+        val saved = fakeRepository.getAnalysisById(summary.id)
+        assertNotNull("Analysis must be successfully saved in the history repository", saved)
+    }
+
     @Test
     fun selfTest_architectureRegression_noDirectAnalysisTypeWeiches() {
         println("=== ARCHITECTURE REGRESSION TEST: NO DIRECT ANALYSISTYPE WEICHES IN MAINACTIVITY ===")

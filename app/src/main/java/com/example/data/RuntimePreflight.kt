@@ -177,6 +177,45 @@ object RuntimePreflight {
                 )
                 Log.e(TAG, "Supabase DB Check error: ${e.message}", e)
             }
+
+            // 5. Check Supabase Edge Function (health-check)
+            try {
+                val edgeCheckResult = kotlinx.coroutines.runBlocking {
+                    kotlinx.coroutines.withTimeoutOrNull(3500) {
+                        com.example.data.remote.SupabaseSystemStatusChecker().checkEdgeFunctionStatus()
+                    }
+                }
+                if (edgeCheckResult != null) {
+                    val statusStr = if (edgeCheckResult.isReachable && edgeCheckResult.status == "online") "PASS" else "FAIL"
+                    checks.add(
+                        PreflightCheckResult(
+                            name = "Supabase Edge Function (health-check)",
+                            status = statusStr,
+                            detail = edgeCheckResult.message
+                        )
+                    )
+                    Log.i(TAG, "Supabase Edge Function Check: $statusStr - ${edgeCheckResult.message}")
+                } else {
+                    checks.add(
+                        PreflightCheckResult(
+                            name = "Supabase Edge Function (health-check)",
+                            status = "FAIL",
+                            detail = "Timeout executing edge function check"
+                        )
+                    )
+                }
+            } catch (e: Exception) {
+                checks.add(
+                    PreflightCheckResult(
+                        name = "Supabase Edge Function (health-check)",
+                        status = "FAIL",
+                        detail = "Exception during edge function check: ${e.message}",
+                        exceptionClass = e.javaClass.name,
+                        exceptionMessage = e.message
+                    )
+                )
+                Log.e(TAG, "Supabase Edge Function Check error: ${e.message}", e)
+            }
         }
 
         val anyFail = checks.any { it.status == "FAIL" }

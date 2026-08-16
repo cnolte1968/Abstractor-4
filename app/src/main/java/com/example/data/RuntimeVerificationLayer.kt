@@ -26,7 +26,8 @@ object RuntimeVerificationLayer {
         if (summary.title.isBlank()) {
             return ValidationResult(false, "Title is empty or blank")
         }
-        if (summary.keyTakeaways.isEmpty()) {
+        val isFreeSourceQuery = context.analysisType.canonical() == AnalysisType.FREE_SOURCE_QUERY
+        if (summary.keyTakeaways.isEmpty() && !(isFreeSourceQuery && summary.shortDescription.isNotBlank())) {
             return ValidationResult(false, "Key takeaways list is empty")
         }
 

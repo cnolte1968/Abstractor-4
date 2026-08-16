@@ -3,8 +3,13 @@ package com.example.data.extraction
 import android.content.Context
 import com.example.data.AnalysisType
 import com.example.data.FileProcessingHelper
+import com.example.domain.model.CapabilityState
+import com.example.domain.model.CapabilityStatus
 import com.example.domain.model.ContentExtractionResult
 import com.example.domain.model.ExtractedContent
+import com.example.domain.model.SourceCapability
+import com.example.domain.model.SourcePlatform
+import com.example.domain.model.SourceProfile
 import com.example.domain.model.SourceType
 import com.example.domain.model.DomainSummary
 import com.example.domain.model.TakeawayItem
@@ -108,7 +113,19 @@ class DocumentInputExtractor(private val context: Context) : InputExtractor {
                     rawText = directContent,
                     enrichedText = directContent,
                     metadata = mapOf("url" to normalizedUrl),
-                    useSearchGrounding = false
+                    useSearchGrounding = false,
+                    confirmedProfile = SourceProfile(
+                        sourceType = SourceProfile.SourceType.RAW_TEXT,
+                        platform = SourcePlatform.LOCAL_FILE,
+                        rawInput = directContent,
+                        capabilities = mapOf(
+                            SourceCapability.RAW_TEXT to CapabilityState(
+                                capability = SourceCapability.RAW_TEXT,
+                                status = CapabilityStatus.AVAILABLE
+                            )
+                        ),
+                        isPostFetchConfirmed = true
+                    )
                 )
             )
         }
@@ -129,7 +146,19 @@ class DocumentInputExtractor(private val context: Context) : InputExtractor {
                             rawText = extractedText,
                             enrichedText = extractedText,
                             metadata = mapOf("url" to normalizedUrl, "fileName" to fileName),
-                            useSearchGrounding = false
+                            useSearchGrounding = false,
+                            confirmedProfile = SourceProfile(
+                                sourceType = SourceProfile.SourceType.DOCUMENT,
+                                platform = SourcePlatform.LOCAL_FILE,
+                                rawInput = normalizedUrl,
+                                capabilities = mapOf(
+                                    SourceCapability.DOCUMENT_TEXT to CapabilityState(
+                                        capability = SourceCapability.DOCUMENT_TEXT,
+                                        status = CapabilityStatus.AVAILABLE
+                                    )
+                                ),
+                                isPostFetchConfirmed = true
+                            )
                         )
                     )
                 }

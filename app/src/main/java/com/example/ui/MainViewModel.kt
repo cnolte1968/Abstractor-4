@@ -20,6 +20,12 @@ import com.example.domain.usecase.SaveAnalysisUseCase
 import com.example.domain.usecase.LoadHistoryUseCase
 import com.example.domain.usecase.SyncUserDataUseCase
 import com.example.domain.repository.UserRepository
+import com.example.domain.model.EligibilityStatus
+import com.example.domain.model.FunctionEligibility
+import com.example.domain.model.SourceProfile
+import com.example.domain.usecase.FunctionEligibilityResolver
+import com.example.domain.usecase.SourceResolver
+import com.example.ui.metadata.FeatureCatalog
 
 enum class LoadingStep {
     IDLE,
@@ -184,13 +190,24 @@ class MainViewModel : ViewModel() {
                             
                             com.example.data.PipelineReportStore.startStep("final_result", "Final Result")
                             com.example.data.PipelineReportStore.updateSection("final_result") { map ->
-                                if (state.summary.fallbackUsed || state.summary.shortDescription == "TRANSCRIPT_UNAVAILABLE") {
+                                val isDegraded = state.summary.fallbackUsed || state.summary.shortDescription == "TRANSCRIPT_UNAVAILABLE"
+                                val isInsufficient = state.summary.shortDescription == "INSUFFICIENT_CONTENT" || state.summary.shortDescription.contains("INSUFFICIENT_CONTENT")
+                                map["technicalStatus"] = "PASS"
+                                map["stabilityStatus"] = "UNKNOWN"
+                                map["pipelineCompleted"] = true
+                                if (isInsufficient) {
+                                    map["finalStatus"] = "INSUFFICIENT_CONTENT"
+                                    map["functionalStatus"] = "INSUFFICIENT_CONTENT"
+                                    map["semanticOutcomeReason"] = "Source content was insufficient for structured summary"
+                                } else if (isDegraded) {
                                     map["finalStatus"] = "DEGRADED"
+                                    map["functionalStatus"] = "DEGRADED"
                                     map["technicalErrorCategory"] = "TRANSCRIPT_UNAVAILABLE"
-                                    map["pipelineCompleted"] = true
+                                    map["semanticOutcomeReason"] = "Metadata fallback used due to unavailable transcript"
                                 } else {
                                     map["finalStatus"] = "PASS"
-                                    map["pipelineCompleted"] = true
+                                    map["functionalStatus"] = "PASS"
+                                    map["semanticOutcomeReason"] = "Normal analysis success"
                                 }
                             }
                             val endMsg = if (state.summary.fallbackUsed || state.summary.shortDescription == "TRANSCRIPT_UNAVAILABLE") {
@@ -217,12 +234,40 @@ class MainViewModel : ViewModel() {
                         is UiState.Error -> {
                             com.example.data.PipelineReportStore.startStep("final_result", "Final Result")
                             com.example.data.PipelineReportStore.updateSection("final_result") { map ->
-                                map["finalStatus"] = "FAIL"
+                                val isGeminiSuccess = com.example.data.GatewayDiagnostics.rawGeminiResponseLength > 0
+                                val isParserOrContractFailure = state.detail?.contains("ParserFailure", ignoreCase = true) == true ||
+                                        state.detail?.contains("STRUCTURED_EXTRACTION_FAILED", ignoreCase = true) == true ||
+                                        state.detail?.contains("Validation failed", ignoreCase = true) == true ||
+                                        state.detail?.contains("Contract violation", ignoreCase = true) == true ||
+                                        state.message.contains("Parser", ignoreCase = true)
+                                val isInsufficient = state.detail?.contains("INSUFFICIENT_CONTENT", ignoreCase = true) == true ||
+                                        state.message.contains("INSUFFICIENT_CONTENT", ignoreCase = true)
+
+                                map["stabilityStatus"] = "UNKNOWN"
                                 map["pipelineCompleted"] = false
                                 map["userVisibleErrorTitle"] = state.message
                                 map["userVisibleErrorMessage"] = state.detail ?: ""
                                 map["failureStage"] = com.example.data.GatewayDiagnostics.failureStage.ifEmpty { "EXECUTION_ERROR" }
                                 map["failureStepId"] = "execution_failure"
+
+                                if (isInsufficient) {
+                                    map["finalStatus"] = "INSUFFICIENT_CONTENT"
+                                    map["technicalStatus"] = "PASS"
+                                    map["functionalStatus"] = "INSUFFICIENT_CONTENT"
+                                    map["semanticOutcomeReason"] = "INSUFFICIENT_CONTENT: Source had insufficient extractable text"
+                                } else if (isGeminiSuccess && isParserOrContractFailure) {
+                                    map["finalStatus"] = "FAIL"
+                                    map["technicalStatus"] = "PASS"
+                                    map["functionalStatus"] = "FAIL"
+                                    val rejReason = com.example.data.GatewayDiagnostics.parserFailureReason.ifEmpty { state.detail ?: "STRUCTURED_EXTRACTION_FAILED" }
+                                    map["parserStrictRejectionReason"] = rejReason
+                                    map["semanticOutcomeReason"] = "Gemini API call succeeded technically (HTTP 200), but parser or contract validation failed: $rejReason"
+                                } else {
+                                    map["finalStatus"] = "FAIL"
+                                    map["technicalStatus"] = "FAIL"
+                                    map["functionalStatus"] = "FAIL"
+                                    map["semanticOutcomeReason"] = state.message
+                                }
                             }
                             com.example.data.PipelineReportStore.endStepFail(
                                 "final_result",
@@ -347,14 +392,58 @@ class MainViewModel : ViewModel() {
     private val _currentAnalysisType = MutableStateFlow<com.example.data.AnalysisType>(com.example.data.AnalysisType.WEB_SUMMARY)
     val currentAnalysisType: StateFlow<com.example.data.AnalysisType> = _currentAnalysisType
 
+    private val sourceResolver = SourceResolver()
+    private val eligibilityResolver = FunctionEligibilityResolver()
+
+    private val _rawInput = MutableStateFlow("")
+    val rawInput: StateFlow<String> = _rawInput
+
+    private val _sourceProfile = MutableStateFlow<SourceProfile?>(sourceResolver.resolvePreFetchProfile(""))
+    val sourceProfile: StateFlow<SourceProfile?> = _sourceProfile
+
+    private val _featureEligibilityMap = MutableStateFlow<Map<String, FunctionEligibility>>(
+        calculateEligibilityMap(sourceResolver.resolvePreFetchProfile(""))
+    )
+    val featureEligibilityMap: StateFlow<Map<String, FunctionEligibility>> = _featureEligibilityMap
+
+    fun updateRawInput(input: String) {
+        _rawInput.value = input
+        val profile = sourceResolver.resolvePreFetchProfile(input)
+        _sourceProfile.value = profile
+        _featureEligibilityMap.value = calculateEligibilityMap(profile)
+    }
+
+    private fun calculateEligibilityMap(profile: SourceProfile): Map<String, FunctionEligibility> {
+        val result = mutableMapOf<String, FunctionEligibility>()
+        for (feature in FeatureCatalog.features) {
+            val analysisType = feature.analysisType ?: continue
+            val eligibility = if (feature.requiredAlternativeGroups.isNotEmpty()) {
+                eligibilityResolver.resolveEligibilityWithAlternatives(
+                    analysisType = analysisType,
+                    sourceProfile = profile,
+                    requiredAlternativeGroups = feature.requiredAlternativeGroups,
+                    optionalCapabilities = feature.optionalCapabilities,
+                    allowedSourceTypes = feature.allowedSourceTypes
+                )
+            } else {
+                eligibilityResolver.resolveEligibility(
+                    analysisType = analysisType,
+                    sourceProfile = profile,
+                    requiredCapabilities = feature.requiredCapabilities,
+                    optionalCapabilities = feature.optionalCapabilities,
+                    allowedSourceTypes = feature.allowedSourceTypes
+                )
+            }
+            result[feature.functionId] = eligibility
+        }
+        return result
+    }
+
     var cachedDirectContent: String? = null
 
     fun resetToIdle() {
         _uiState.value = UiState.Idle
-        _currentUrl.value = ""
-        _currentTitle.value = ""
         _currentAnalysisType.value = com.example.data.AnalysisType.WEB_SUMMARY
-        cachedDirectContent = null
     }
 
     fun setAnalysisType(type: com.example.data.AnalysisType) {
@@ -478,11 +567,48 @@ class MainViewModel : ViewModel() {
     }
 
     fun fetchSummary(rawUrl: String, directContent: String? = null, analysisType: com.example.data.AnalysisType = com.example.data.AnalysisType.WEB_SUMMARY, freeQuery: String? = null) {
+        // Central Diagnostic Lifecycle Reset before ANY analysis execution
+        com.example.data.GatewayDiagnostics.reset()
+        com.example.data.GatewayDiagnostics.sourceUrl = rawUrl
+        com.example.data.GatewayDiagnostics.loadedFunctionId = analysisType.canonical().name
+        com.example.data.GatewayDiagnostics.loadedAnalysisType = analysisType.canonical().name
+
+        val sourceTrigger = if (!directContent.isNullOrBlank()) "DIRECT_TEXT" else "MANUAL_URL"
+        com.example.data.PipelineReportStore.startNewReport(sourceTrigger = sourceTrigger)
+
         if (analysisType == com.example.data.AnalysisType.GOOGLE_MAPS_ANALYZER) {
             val analysisId = java.util.UUID.randomUUID().toString() + "|" + analysisType.name
             _currentAnalysisType.value = analysisType
             _currentUrl.value = rawUrl
             _currentTitle.value = "Google Maps Analyzer (Stufe 1)"
+
+            // Populate initial PipelineReport context for Google Maps
+            com.example.data.PipelineReportStore.startStep("input_intake", "Input Intake", "URL: $rawUrl")
+            com.example.data.PipelineReportStore.updateSection("input_intake") { map ->
+                map["rawInput"] = rawUrl
+                map["directContentProvided"] = "false"
+            }
+            com.example.data.PipelineReportStore.endStepPass("input_intake")
+            
+            com.example.data.PipelineReportStore.startStep("notation_and_id_resolution", "Notation and ID Resolution")
+            com.example.data.PipelineReportStore.endStepPass("notation_and_id_resolution")
+            
+            com.example.data.PipelineReportStore.startStep("feature_routing", "Feature Routing")
+            com.example.data.PipelineReportStore.endStepPass("feature_routing", notes = "Route zu Google Maps Sonderpfad.")
+            
+            com.example.data.PipelineReportStore.startStep("url_normalization", "URL Normalization")
+            com.example.data.PipelineReportStore.updateSection("url_normalization") { map ->
+                map["rawUrl"] = rawUrl
+                map["trimmedUrl"] = rawUrl.trim()
+            }
+            com.example.data.PipelineReportStore.endStepPass("url_normalization")
+            
+            com.example.data.PipelineReportStore.endStepSkipped("engine_routing", "Google Maps Sonderpfad verwendet keine generische LLM Engine.")
+            com.example.data.PipelineReportStore.endStepSkipped("prompt_loading", "Google Maps Sonderpfad übersprungen.")
+            com.example.data.PipelineReportStore.endStepSkipped("gemini_request", "Übersprungen (API Call erfolgt über Places API).")
+            com.example.data.PipelineReportStore.endStepSkipped("gemini_response", "Übersprungen.")
+            com.example.data.PipelineReportStore.endStepSkipped("response_normalization", "Übersprungen.")
+
             _uiState.value = UiState.Loading(LoadingStep.FETCHING_DATA, analysisId)
 
             viewModelScope.launch {
@@ -490,6 +616,18 @@ class MainViewModel : ViewModel() {
                     val trimmedUrl = rawUrl.trim()
                     
                     if (!com.example.data.GoogleMapsUrlParser.isGoogleMapsUrl(trimmedUrl)) {
+                        com.example.data.GatewayDiagnostics.failureStage = "MAPS_URL_VALIDATION"
+                        com.example.data.GatewayDiagnostics.exceptionMessage = "Ungültiger Google Maps Link"
+                        com.example.data.PipelineReportStore.endStepFail("extractor_selection", null, "Ungültiger Google Maps Link")
+                        
+                        appContext?.let { com.example.data.PipelineReportStore.populateFromDiagnostics(it) }
+                        com.example.data.PipelineReportStore.startStep("final_result", "Final Result")
+                        com.example.data.PipelineReportStore.updateSection("final_result") { map ->
+                            map["finalStatus"] = "ERROR"
+                            map["userVisibleErrorMessage"] = "Ungültiger Google Maps Link"
+                        }
+                        com.example.data.PipelineReportStore.endStepFail("final_result", null, "URL Validation Failed")
+
                         _uiState.value = UiState.Error(
                             isPaywallOrBlocked = false,
                             message = "Ungültiger Google Maps Link",
@@ -582,6 +720,17 @@ class MainViewModel : ViewModel() {
                             analysisType = com.example.data.AnalysisType.GOOGLE_MAPS_ANALYZER,
                             analysisId = analysisId
                         )
+
+                        appContext?.let { com.example.data.PipelineReportStore.populateFromDiagnostics(it) }
+                        com.example.data.PipelineReportStore.startStep("final_result", "Final Result")
+                        com.example.data.PipelineReportStore.updateSection("final_result") { map ->
+                            map["finalStatus"] = "SUCCESS"
+                        }
+                        com.example.data.PipelineReportStore.endStepPass(
+                            "final_result",
+                            "Summary generated successfully",
+                            notes = "Google Maps Result: ${summary.title}"
+                        )
                     } else {
                         val errorDetail = StringBuilder()
                         errorDetail.append("Status: ${pocResult.resolutionStatus}\n")
@@ -590,6 +739,19 @@ class MainViewModel : ViewModel() {
                         } else {
                             errorDetail.append("Es konnten keine Ortsparameter extrahiert werden.\n")
                         }
+                        val detailStr = errorDetail.toString().trim()
+                        com.example.data.GatewayDiagnostics.failureStage = "MAPS_POC_ANALYSIS"
+                        com.example.data.GatewayDiagnostics.exceptionMessage = "Google Maps Analyzer Fehler: $detailStr"
+                        com.example.data.PipelineReportStore.endStepFail("source_http_fetch", null, detailStr)
+                        
+                        appContext?.let { com.example.data.PipelineReportStore.populateFromDiagnostics(it) }
+                        com.example.data.PipelineReportStore.startStep("final_result", "Final Result")
+                        com.example.data.PipelineReportStore.updateSection("final_result") { map ->
+                            map["finalStatus"] = "ERROR"
+                            map["userVisibleErrorMessage"] = "Google Maps Analyzer Fehler"
+                        }
+                        com.example.data.PipelineReportStore.endStepFail("final_result", null, detailStr)
+
                         _uiState.value = UiState.Error(
                             isPaywallOrBlocked = false,
                             message = "Google Maps Analyzer Fehler",
@@ -598,6 +760,18 @@ class MainViewModel : ViewModel() {
                         )
                     }
                 } catch (e: Exception) {
+                    com.example.data.GatewayDiagnostics.failureStage = "MAPS_EXECUTION"
+                    com.example.data.GatewayDiagnostics.exceptionMessage = e.localizedMessage ?: e.toString()
+                    com.example.data.PipelineReportStore.endStepFail("source_http_fetch", e, "Maps execution exception")
+                    
+                    appContext?.let { com.example.data.PipelineReportStore.populateFromDiagnostics(it) }
+                    com.example.data.PipelineReportStore.startStep("final_result", "Final Result")
+                    com.example.data.PipelineReportStore.updateSection("final_result") { map ->
+                        map["finalStatus"] = "ERROR"
+                        map["userVisibleErrorMessage"] = e.localizedMessage ?: e.toString()
+                    }
+                    com.example.data.PipelineReportStore.endStepFail("final_result", e, "Maps execution exception")
+
                     _uiState.value = UiState.Error(
                         isPaywallOrBlocked = false,
                         message = "Google Maps Analyzer Fehler",
@@ -615,9 +789,6 @@ class MainViewModel : ViewModel() {
         _currentTitle.value = "Webseite analysieren"
         _uiState.value = UiState.Loading(LoadingStep.FETCHING_DATA, analysisId)
         android.util.Log.i("RUNTIME_SMOKE", "INPUT_SELECTED - AnalysisType: $analysisType, URL: $rawUrl, HasDirect: ${!directContent.isNullOrBlank()}")
-        
-        val sourceTrigger = if (!directContent.isNullOrBlank()) "DIRECT_TEXT" else "MANUAL_URL"
-        com.example.data.PipelineReportStore.startNewReport(sourceTrigger = sourceTrigger)
         
         com.example.data.PipelineReportStore.startStep("input_intake", "Input Intake", "URL: $rawUrl")
         com.example.data.PipelineReportStore.updateSection("input_intake") { map ->
@@ -723,7 +894,7 @@ class MainViewModel : ViewModel() {
                         )
                         com.example.data.GatewayDiagnostics.sourceContentLengthSent = finalInput.rawText.length
 
-                        val targetType = if (content.sourceType == SourceType.YOUTUBE) {
+                        val targetType = if (content.sourceType == SourceType.YOUTUBE && (analysisType == com.example.data.AnalysisType.STANDARD_WEBSEITE || analysisType == com.example.data.AnalysisType.WEB_SUMMARY)) {
                             com.example.data.AnalysisType.MULTIMEDIA_ANALYSIS
                         } else {
                             analysisType
@@ -739,7 +910,22 @@ class MainViewModel : ViewModel() {
                                 )
                             }
                             // Ensure fallbackUsed is set to true and preserve Gemini's generated shortDescription
-                            val finalSummary = summary.copy(fallbackUsed = true)
+                            val fallbackTitle = if (summary.title.isBlank() || summary.title == "Unbekannter Titel" || summary.title == "Video nicht auslesbar") {
+                                content.metadata["title"]?.ifBlank { null } ?: summary.title
+                            } else {
+                                summary.title
+                            }
+                            val fallbackOwner = if (summary.owner.isNullOrBlank()) {
+                                content.metadata["channel"]?.ifBlank { null }
+                            } else {
+                                summary.owner
+                            }
+                            val finalSummary = summary.copy(
+                                title = fallbackTitle,
+                                owner = fallbackOwner,
+                                fallbackUsed = true
+                            )
+                            _currentTitle.value = finalSummary.title
                             _uiState.value = UiState.Success(finalSummary, targetType, analysisId)
                             android.util.Log.i("RUNTIME_SMOKE", "RESULT_RENDERED - Degraded analysis result rendered successfully")
                             android.util.Log.i("RUNTIME_SMOKE", "RUNTIME_SMOKE_PASS - Complete flow finished.")
@@ -765,7 +951,7 @@ class MainViewModel : ViewModel() {
                         )
                         com.example.data.GatewayDiagnostics.sourceContentLengthSent = finalInput.rawText.length
 
-                        val targetType = if (content.sourceType == SourceType.YOUTUBE) {
+                        val targetType = if (content.sourceType == SourceType.YOUTUBE && (analysisType == com.example.data.AnalysisType.STANDARD_WEBSEITE || analysisType == com.example.data.AnalysisType.WEB_SUMMARY)) {
                             com.example.data.AnalysisType.MULTIMEDIA_ANALYSIS
                         } else {
                             analysisType

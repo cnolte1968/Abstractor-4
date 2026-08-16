@@ -147,6 +147,7 @@ object ReportSanitizer {
         // 6. enrichment
         val enrichmentObj = JSONObject()
         enrichmentObj.put("location_context", sanitizeMap(report.location_context))
+        enrichmentObj.put("google_maps_analysis", sanitizeMap(report.google_maps_analysis))
         root.put("enrichment", enrichmentObj)
 
         // 7. gemini
@@ -197,6 +198,14 @@ object ReportSanitizer {
         // 12. errors
         val errorsObj = JSONObject()
         errorsObj.put("final_status", report.final_result["finalStatus"] ?: "NOT_RUN")
+        errorsObj.put("technical_status", report.final_result["technicalStatus"] ?: "NOT_RUN")
+        errorsObj.put("functional_status", report.final_result["functionalStatus"] ?: "NOT_RUN")
+        errorsObj.put("stability_status", report.final_result["stabilityStatus"] ?: "UNKNOWN")
+        errorsObj.put("run_iteration", report.final_result["runIteration"] ?: 1)
+        errorsObj.put("payload_input_hash", report.final_result["payloadInputHash"] ?: "")
+        errorsObj.put("external_candidate_count", report.final_result["externalCandidateCount"] ?: 0)
+        errorsObj.put("parser_strict_rejection_reason", report.final_result["parserStrictRejectionReason"] ?: "")
+        errorsObj.put("semantic_outcome_reason", report.final_result["semanticOutcomeReason"] ?: "")
         errorsObj.put("failure_stage", report.final_result["failureStage"] ?: "")
         errorsObj.put("failure_step_id", report.final_result["failureStepId"] ?: "")
         errorsObj.put("user_visible_error_title", report.final_result["userVisibleErrorTitle"] ?: "")
@@ -260,6 +269,7 @@ object ReportSanitizer {
         root.put("user_actions", sanitizeMap(report.user_actions))
         root.put("final_result", sanitizeMap(report.final_result))
         root.put("location_context", sanitizeMap(report.location_context))
+        root.put("google_maps_analysis", sanitizeMap(report.google_maps_analysis))
         root.put("pipeline_steps", timelineArr)
 
         // 15. redaction_summary

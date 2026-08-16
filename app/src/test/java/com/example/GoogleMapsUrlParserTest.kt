@@ -139,6 +139,48 @@ class GoogleMapsUrlParserTest {
         
         assertEquals("Kölner Dom", result.searchQuery)
         assertNull(result.latitude)
+        assertNull(result.plusCode)
+    }
+
+    @Test
+    fun testParsePlusCodeInQueryUrl() {
+        val url = "https://maps.google.com/?q=QXV3%2B893+Berlin"
+        val result = GoogleMapsUrlParser.parseGoogleMapsUrl(
+            originalText = url,
+            url = url,
+            resolvedUrl = url,
+            resolutionStatus = "SUCCESS"
+        )
+
+        assertEquals("QXV3+893 Berlin", result.searchQuery)
+        assertEquals("QXV3+893", result.plusCode)
+        assertNull(result.latitude) // Short code cannot be decoded without reference
+    }
+    
+    @Test
+    fun testParseFullPlusCodeInQueryUrl() {
+        val url = "https://maps.google.com/?q=8FW4V75V%2B8Q" // Eiffel Tower, Paris
+        val result = GoogleMapsUrlParser.parseGoogleMapsUrl(
+            originalText = url,
+            url = url,
+            resolvedUrl = url,
+            resolutionStatus = "SUCCESS"
+        )
+
+        assertEquals("8FW4V75V+8Q", result.searchQuery)
+        assertEquals("8FW4V75V+8Q", result.plusCode)
+        assertEquals(48.858, result.latitude!!, 0.01)
+        assertEquals(2.294, result.longitude!!, 0.01)
+    }
+
+    @Test
+    fun testOpenLocationCodeDecodingFullCode() {
+        val fullCode = "8FW4V75V+8Q" // Eiffel Tower, Paris
+        val olc = com.google.openlocationcode.OpenLocationCode(fullCode)
+        assertTrue(olc.isFull)
+        val decoded = olc.decode()
+        assertEquals(48.858, decoded.centerLatitude, 0.01)
+        assertEquals(2.294, decoded.centerLongitude, 0.01)
     }
 
     @Test
@@ -215,5 +257,21 @@ class GoogleMapsUrlParserTest {
 
         // Verify it DID NOT auto-run the analysis (it should remain Idle, not Loading or Success)
         assertTrue(viewModel.uiState.value is com.example.ui.UiState.Idle)
+    }
+
+    @Test
+    fun testParsePlacePathWithPlusCodeAndCid() {
+        val resolvedUrl = "https://www.google.com/maps/place/QXV3%2B893+%E0%B9%82%E0%B8%88%E0%B9%8A%E0%B8%81%E0%B8%AB%E0%B8%A5%E0%B8%B1%E0%B8%87%E0%B8%A1%E0%B8%AD+%E0%B8%9B%E0%B8%A3%E0%B8%B0%E0%B8%95%E0%B8%B9%E0%B8%A7%E0%B8%B4%E0%B8%A8%E0%B8%A7%E0%B8%B0+(Congee+street+food),+Tambon+Su+Thep,+Amphoe+Mueang+Chiang+Mai,+Chang+Wat+Chiang+Mai+50200/data=!4m2!3m1!1s0x30da3b61993fb427:0xbc8c8c3802104370"
+        val result = GoogleMapsUrlParser.parseGoogleMapsUrl(
+            originalText = resolvedUrl,
+            url = "https://maps.app.goo.gl/WgXTvya1yCDJjameA",
+            resolvedUrl = resolvedUrl,
+            resolutionStatus = "SUCCESS"
+        )
+
+        assertEquals("13586388348050621296", result.cid)
+        assertEquals("QXV3+893", result.plusCode)
+        assertTrue(result.placeName?.contains("Congee street food") == true)
+        assertTrue(result.placeName?.contains("โจ๊กหลังมอ") == true)
     }
 }

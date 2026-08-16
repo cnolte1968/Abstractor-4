@@ -1,3 +1,7 @@
 # /build unignored for explorer visibility
 !/build/
 !/build/**
+
+# Dynamische Test-Artefakte
+raw_gemini_response.json
+finalUserContent.txt

@@ -444,7 +444,8 @@ object SummaryResponseParser {
             }
         }
         
-        if (takeaways.isEmpty()) return null
+        val isFreeSourceQuery = analysisType?.canonical() == AnalysisType.FREE_SOURCE_QUERY
+        if (takeaways.isEmpty() && !(isFreeSourceQuery && shortDesc.isNotBlank())) return null
         
         val summary = DomainSummary(
             id = java.util.UUID.randomUUID().toString(),
@@ -574,7 +575,10 @@ object SummaryResponseParser {
                     }
                 }
 
-                if (takeaways.isNotEmpty()) {
+                val isFreeSourceQuery = analysisType?.canonical() == AnalysisType.FREE_SOURCE_QUERY
+                val isValidEmptyTakeaways = isFreeSourceQuery && shortDesc.isNotBlank()
+
+                if (takeaways.isNotEmpty() || isValidEmptyTakeaways) {
                     val summary = DomainSummary(
                         id = java.util.UUID.randomUUID().toString(),
                         title = title,
@@ -629,13 +633,17 @@ object SummaryResponseParser {
                         sanitizeTakeawayItem(TakeawayItem(cleanedTitle, rawDetails, visualMetadataMap))
                     }?.filter { it.title.isNotBlank() && it.details.isNotBlank() && !isRawJson(it.details) }
 
-                    if (!takeaways.isNullOrEmpty()) {
+                    val isFreeSourceQuery = analysisType?.canonical() == AnalysisType.FREE_SOURCE_QUERY
+                    val shortDesc = parsed.shortDescription ?: ""
+                    val isValidEmptyTakeaways = isFreeSourceQuery && shortDesc.isNotBlank()
+
+                    if (!takeaways.isNullOrEmpty() || (takeaways != null && isValidEmptyTakeaways)) {
                         val summary = DomainSummary(
                             id = java.util.UUID.randomUUID().toString(),
                             title = parsed.title,
                             originalUrl = parsed.originalUrl ?: originalFallbackUrl,
-                            shortDescription = parsed.shortDescription ?: "",
-                            keyTakeaways = takeaways,
+                            shortDescription = shortDesc,
+                            keyTakeaways = takeaways ?: emptyList(),
                             owner = parsed.owner,
                             analysisId = analysisId
                         )
@@ -643,7 +651,7 @@ object SummaryResponseParser {
                         successStrategy = "Moshi objects"
                         buildAndStoreReport(
                             rawText, json, originalFallbackUrl, analysisType, analysisId, extractedContentLength,
-                            successStrategy, "none", "none", takeaways
+                            successStrategy, "none", "none", takeaways ?: emptyList()
                         )
                         logDiagnostics(rawText, successStrategy, failureReasons, null)
                         return result
@@ -669,13 +677,17 @@ object SummaryResponseParser {
                         sanitizeTakeawayItem(TakeawayItem(t, d))
                     }?.filter { it.title.isNotBlank() && it.details.isNotBlank() && !isRawJson(it.details) }
 
-                    if (!takeaways.isNullOrEmpty()) {
+                    val isFreeSourceQuery = analysisType?.canonical() == AnalysisType.FREE_SOURCE_QUERY
+                    val shortDesc = parsed.shortDescription ?: ""
+                    val isValidEmptyTakeaways = isFreeSourceQuery && shortDesc.isNotBlank()
+
+                    if (!takeaways.isNullOrEmpty() || (takeaways != null && isValidEmptyTakeaways)) {
                         val summary = DomainSummary(
                             id = java.util.UUID.randomUUID().toString(),
                             title = parsed.title,
                             originalUrl = parsed.originalUrl ?: originalFallbackUrl,
-                            shortDescription = parsed.shortDescription ?: "",
-                            keyTakeaways = takeaways,
+                            shortDescription = shortDesc,
+                            keyTakeaways = takeaways ?: emptyList(),
                             owner = parsed.owner,
                             analysisId = analysisId
                         )
@@ -683,7 +695,7 @@ object SummaryResponseParser {
                         successStrategy = "Moshi strings"
                         buildAndStoreReport(
                             rawText, json, originalFallbackUrl, analysisType, analysisId, extractedContentLength,
-                            successStrategy, "none", "none", takeaways
+                            successStrategy, "none", "none", takeaways ?: emptyList()
                         )
                         logDiagnostics(rawText, successStrategy, failureReasons, null)
                         return result

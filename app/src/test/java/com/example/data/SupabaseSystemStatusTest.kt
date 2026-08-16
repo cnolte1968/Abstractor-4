@@ -184,4 +184,56 @@ class SupabaseSystemStatusTest {
         assertFalse(result.isReachable)
         assertTrue(result.message.contains("Exception") || result.message.contains("HTTP"))
     }
+    @Test
+    fun testEdgeFunctionDtoParsing() {
+        val json = """{"status":"online","message":"Edge Function is operational","version":"1.0"}"""
+        val moshi = Moshi.Builder().addLast(com.squareup.moshi.kotlin.reflect.KotlinJsonAdapterFactory()).build()
+        val adapter = moshi.adapter(com.example.data.remote.EdgeFunctionHealthDto::class.java)
+        val result = adapter.fromJson(json)
+        org.junit.Assert.assertTrue(result != null)
+        org.junit.Assert.assertEquals("online", result?.status)
+        org.junit.Assert.assertEquals("Edge Function is operational", result?.message)
+        org.junit.Assert.assertEquals("1.0", result?.version)
+    }
+
+    @Test
+    fun testEdgeFunctionNetwork() = kotlinx.coroutines.runBlocking {
+        val server = java.net.ServerSocket(0)
+        val port = server.localPort
+        var capturedRequest = ""
+        val latch = java.util.concurrent.CountDownLatch(1)
+        kotlin.concurrent.thread {
+            try {
+                val socket = server.accept()
+                val reader = java.io.BufferedReader(java.io.InputStreamReader(socket.getInputStream()))
+                val out = java.io.PrintWriter(socket.getOutputStream(), true)
+                val line = reader.readLine()
+                if (line != null) {
+                    capturedRequest = line
+                }
+                while (reader.readLine().isNotEmpty()) { }
+                val responseBody = """{"status":"online","message":"Edge Function is operational","version":"1.0"}"""
+                out.print("HTTP/1.1 200 OK\r\n")
+                out.print("Content-Type: application/json\r\n")
+                out.print("Content-Length: ${responseBody.length}\r\n")
+                out.print("\r\n")
+                out.print(responseBody)
+                out.flush()
+                socket.close()
+            } catch (e: Exception) {
+            } finally {
+                latch.countDown()
+            }
+        }
+        val testUrl = "http://localhost:$port/"
+        val apiService = com.example.data.remote.SupabaseApiService.create(baseUrl = testUrl, publishableKey = "test")
+        val checker = com.example.data.remote.SupabaseSystemStatusChecker(apiService)
+        val result = checker.checkEdgeFunctionStatus()
+        latch.await(2, java.util.concurrent.TimeUnit.SECONDS)
+        server.close()
+        org.junit.Assert.assertTrue("Request path should be correct: $capturedRequest", capturedRequest.contains("/functions/v1/health-check"))
+        org.junit.Assert.assertTrue("Expected true", result.isReachable)
+        org.junit.Assert.assertEquals("online", result.status)
+        org.junit.Assert.assertEquals("1.0", result.version)
+    }
 }

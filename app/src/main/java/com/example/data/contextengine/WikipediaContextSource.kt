@@ -132,20 +132,29 @@ class WikipediaContextSource(
                 }
 
                 val wikiUrl = "https://$usedLanguage.wikipedia.org/wiki/${URLEncoder.encode(matchedTitle.replace(" ", "_"), "UTF-8")}"
+                val isParent = !parentLocation.isNullOrBlank() &&
+                        (matchedTitle.equals(parentLocation, ignoreCase = true) || !calculateNameMatch(mainPoiName, matchedTitle))
+                val formattedSnippet = if (isParent) {
+                    "Umfeld- und Ortskontext ($matchedTitle):\n$extract"
+                } else {
+                    extract
+                }
                 ContextResult(
                     sourceName = sourceName,
                     sourceType = sourceType,
                     isSuccessful = true,
-                    snippet = extract,
+                    snippet = formattedSnippet,
                     sourceUrl = wikiUrl,
                     trustScore = 0.95,
-                    confidenceScore = 0.9,
+                    confidenceScore = if (isParent) 0.85 else 0.9,
                     fetchedAtTimestamp = now,
                     metadata = mapOf(
                         "wikiTitle" to matchedTitle,
                         "wikiUrl" to wikiUrl,
-                        "status" to "MATCHED",
-                        "language" to usedLanguage
+                        "status" to if (isParent) "PARENT_LOCATION_MATCH" else "MATCHED",
+                        "language" to usedLanguage,
+                        "isParentLocation" to isParent.toString(),
+                        "parentLocation" to (parentLocation ?: "")
                     )
                 )
             } catch (e: Exception) {
@@ -165,34 +174,66 @@ class WikipediaContextSource(
     }
 
     private fun extractMainPoiName(rawName: String): String {
-        if (rawName.contains(",")) {
-            return rawName.substringBefore(",").trim()
+        var clean = rawName
+            .replace(Regex("^[A-Z0-9]{4,8}\\+[A-Z0-9]{2,4}\\s*"), "")
+            .trim()
+        if (clean.contains(",")) {
+            return clean.substringBefore(",").trim()
         }
-        if (rawName.contains(" - ")) {
-            return rawName.substringBefore(" - ").trim()
+        if (clean.contains(" - ")) {
+            return clean.substringBefore(" - ").trim()
         }
-        return rawName.trim()
+        return clean.trim()
     }
 
     private fun extractParentLocation(rawName: String, address: String?): String? {
-        if (rawName.contains(",")) {
-            val afterComma = rawName.substringAfter(",").trim()
-            if (afterComma.isNotBlank()) return afterComma
-        }
-        if (rawName.contains(" - ")) {
-            val afterDash = rawName.substringAfter(" - ").trim()
-            if (afterDash.isNotBlank()) return afterDash
-        }
-        if (!address.isNullOrBlank()) {
-            val parts = address.split(",").map { it.trim() }.filter { it.isNotBlank() }
+        val candidates = mutableListOf<String>()
+        val allSources = listOfNotNull(address, rawName)
+        for (src in allSources) {
+            val parts = src.split(",", " - ").map { it.trim() }.filter { it.isNotBlank() }
             for (part in parts.reversed()) {
-                val cleanPart = part.replace("\\b\\d{4,6}\\b".toRegex(), "").trim()
-                if (cleanPart.isNotBlank() && cleanPart.length > 2) {
-                    return cleanPart
+                val cleaned = cleanLocationPart(part)
+                if (cleaned.isNotBlank() && cleaned.length > 2 && !isGenericOrPostalOnly(cleaned)) {
+                    candidates.add(cleaned)
                 }
             }
         }
-        return null
+        return candidates.firstOrNull()
+    }
+
+    private fun cleanLocationPart(part: String): String {
+        var clean = part
+            .replace(Regex("^[A-Z0-9]{4,8}\\+[A-Z0-9]{2,4}\\s*"), "")
+            .replace(Regex("\\b\\d{4,6}\\b"), "")
+            .trim()
+
+        val adminPrefixes = listOf(
+            "Chang Wat ", "Changwat ", "Amphoe Mueang ", "Amphoe ", "Tambon ", "King Amphoe ",
+            "Mueang ", "District of ", "Province of ", "State of ", "City of ", "Prefecture ",
+            "Provinz ", "Bezirk ", "Landkreis ", "Kreis ", "Regierungsbezirk ", "Gemeinde ", "Stadt "
+        )
+        for (prefix in adminPrefixes) {
+            if (clean.startsWith(prefix, ignoreCase = true)) {
+                clean = clean.substring(prefix.length).trim()
+            }
+        }
+        val adminSuffixes = listOf(
+            " District", " Province", " State", " City", " Prefecture",
+            " Bezirk", " Landkreis", " Kreis", " Provinz"
+        )
+        for (suffix in adminSuffixes) {
+            if (clean.endsWith(suffix, ignoreCase = true)) {
+                clean = clean.substring(0, clean.length - suffix.length).trim()
+            }
+        }
+        return clean.trim()
+    }
+
+    private fun isGenericOrPostalOnly(str: String): Boolean {
+        if (str.isBlank()) return true
+        if (str.matches(Regex("^[0-9\\s\\-\\.,]+$"))) return true
+        val generic = setOf("deutschland", "germany", "thailand", "location", "ort", "place", "address", "adresse")
+        return generic.contains(str.lowercase())
     }
 
     private suspend fun performGeoSearch(lat: Double, lon: Double, lang: String = language): List<GeoCandidate> {

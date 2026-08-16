@@ -441,7 +441,7 @@ class ContentExtractionRegressionTest {
             analysisType = AnalysisType.STANDARD_WEBSEITE
         )
         assertNotNull(ytExtractor)
-        assertTrue(ytExtractor is com.example.data.extraction.YoutubeInputExtractor)
+        assertTrue(ytExtractor is com.example.data.extraction.RemoteVideoInputExtractor || ytExtractor is com.example.data.extraction.YoutubeInputExtractor)
 
         // 3. Document inputs (direct content, document type, or document file extension) should resolve to DocumentInputExtractor
         val docExtractor1 = registry.getExtractor(

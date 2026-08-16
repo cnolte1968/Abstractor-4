@@ -69,6 +69,8 @@ class AnalyzeContentUseCase(
                 contextText
             }
 
+            com.example.data.GatewayDiagnostics.sourceContentLengthSent = combinedText.length
+
             configuredInput.copy(enrichedText = combinedText)
         } else {
             configuredInput

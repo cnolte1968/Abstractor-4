@@ -72,6 +72,7 @@ secrets {
 }
 
 dependencies {
+    testImplementation("com.squareup.okhttp3:mockwebserver:4.12.0")
     implementation(platform(libs.androidx.compose.bom))
     implementation(platform(libs.firebase.bom))
     
@@ -99,6 +100,7 @@ dependencies {
     implementation(libs.moshi.kotlin)
     implementation(libs.okhttp)
     implementation(libs.retrofit)
+    implementation("com.google.openlocationcode:openlocationcode:1.0.4")
     
     testImplementation(libs.androidx.compose.ui.test.junit4)
     testImplementation(libs.androidx.core)
@@ -157,4 +159,5 @@ tasks.matching { it.name == "assembleDebug" }.configureEach {
     finalizedBy("verifyApk")
 }
 dependencies {
+    testImplementation("com.squareup.okhttp3:mockwebserver:4.12.0")
 }

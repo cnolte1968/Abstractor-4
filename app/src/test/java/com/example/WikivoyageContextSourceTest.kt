@@ -103,8 +103,9 @@ class WikivoyageContextSourceTest {
 
         assertTrue(result.isSuccessful)
         assertEquals(ContextSourceType.TRAVEL_GUIDE, result.sourceType)
-        assertEquals("Köln ist die viertgrößte Stadt Deutschlands und bekannt für den Kölner Dom.", result.snippet)
+        assertEquals("Umfeld- und Ortskontext (Köln):\nKöln ist die viertgrößte Stadt Deutschlands und bekannt für den Kölner Dom.", result.snippet)
         assertEquals("Köln", result.metadata["wikivoyageTitle"])
+        assertEquals("PARENT_LOCATION_MATCH", result.metadata["status"])
     }
 
     @Test

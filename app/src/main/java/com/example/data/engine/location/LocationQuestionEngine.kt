@@ -26,7 +26,7 @@ class LocationQuestionEngine(
             supportsSearchGrounding = true,
             supportsDirectPdf = false
         ),
-        promptPath = "prompts/F_GOOGLE_MAPS_LOCATION_CONTEXT.md"
+        promptPath = "prompts/F_GOOGLE_MAPS_LOCATION_QA.md"
     )
 ) : BaseGeminiEngine(gateway, promptAssetLoader) {
 

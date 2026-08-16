@@ -4,8 +4,13 @@ import com.example.data.AnalysisType
 import com.example.data.YoutubeTranscriptHelper
 import com.example.data.YoutubeUrlDecoder
 import com.example.data.PipelineReportStore
+import com.example.domain.model.CapabilityState
+import com.example.domain.model.CapabilityStatus
 import com.example.domain.model.ContentExtractionResult
 import com.example.domain.model.ExtractedContent
+import com.example.domain.model.SourceCapability
+import com.example.domain.model.SourcePlatform
+import com.example.domain.model.SourceProfile
 import com.example.domain.model.SourceType
 import com.example.domain.model.DomainSummary
 import com.example.domain.model.TakeawayItem
@@ -98,12 +103,53 @@ class YoutubeInputExtractor : InputExtractor {
         if (isExtended) {
             com.example.data.GatewayDiagnostics.ytMetadataOnly = true
         }
+
+        val confirmedProfile = if (isExtended) {
+            SourceProfile(
+                sourceType = SourceProfile.SourceType.VIDEO,
+                platform = SourcePlatform.YOUTUBE,
+                rawInput = rawUrl,
+                normalizedUrl = normalizedUrl,
+                capabilities = mapOf(
+                    SourceCapability.VIDEO_METADATA to CapabilityState(
+                        capability = SourceCapability.VIDEO_METADATA,
+                        status = CapabilityStatus.AVAILABLE
+                    ),
+                    SourceCapability.TRANSCRIPT_TEXT to CapabilityState(
+                        capability = SourceCapability.TRANSCRIPT_TEXT,
+                        status = CapabilityStatus.FAILED,
+                        detailMessage = "Transkript für dieses Video nicht verfügbar"
+                    )
+                ),
+                isPostFetchConfirmed = true
+            )
+        } else {
+            SourceProfile(
+                sourceType = SourceProfile.SourceType.VIDEO,
+                platform = SourcePlatform.YOUTUBE,
+                rawInput = rawUrl,
+                normalizedUrl = normalizedUrl,
+                capabilities = mapOf(
+                    SourceCapability.VIDEO_METADATA to CapabilityState(
+                        capability = SourceCapability.VIDEO_METADATA,
+                        status = CapabilityStatus.AVAILABLE
+                    ),
+                    SourceCapability.TRANSCRIPT_TEXT to CapabilityState(
+                        capability = SourceCapability.TRANSCRIPT_TEXT,
+                        status = CapabilityStatus.AVAILABLE
+                    )
+                ),
+                isPostFetchConfirmed = true
+            )
+        }
+
         val extractedContent = ExtractedContent(
             sourceType = SourceType.YOUTUBE,
             rawText = youtubeInput.rawText,
             enrichedText = youtubeInput.enrichedText,
             metadata = youtubeInput.metadata,
-            useSearchGrounding = false
+            useSearchGrounding = false,
+            confirmedProfile = confirmedProfile
         )
 
         return if (isExtended) {

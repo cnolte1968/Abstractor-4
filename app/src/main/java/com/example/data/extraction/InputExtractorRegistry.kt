@@ -6,6 +6,7 @@ import com.example.data.AnalysisType
 class InputExtractorRegistry(private val context: Context) {
 
     private val extractors: List<InputExtractor> = listOf(
+        RemoteVideoInputExtractor(),
         YoutubeInputExtractor(),
         DocumentInputExtractor(context),
         WebInputExtractor()
